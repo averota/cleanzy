@@ -1,0 +1,200 @@
+/* assets/css/styles.css - the only custom stylesheet. Load it AFTER Bootstrap 5.3 (CDN).
+   Replaces styles.css + home/sales/reports/products/users.css (those files can be deleted).
+   Order: 1 theme · 2 Bootstrap tweaks · 3 app shell + sidebar · 4 shared bits · 5 page bits · 6 login (no Bootstrap) */
+
+@import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400..700&display=swap');   /* Khmer font, must stay first */
+
+/* =====================================================================
+   1. Theme (Bootstrap variables)
+   ===================================================================== */
+html { font-size: 80%; }   /* GLOBAL SCALE: 16px -> 12.8px. Every rem value (Bootstrap + custom CSS) follows. Change this one number to rescale the app. */
+
+:root {
+  --app-bg: #f5f6f8;
+  --rail: 51.2px;
+  --sidebar-open: 192px;
+  --header-height: 44.8px;
+  --app-font: "Kantumruy Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --bs-body-font-family: var(--app-font);
+
+  --bs-primary: #1d4ed8;
+  --bs-primary-rgb: 29, 78, 216;
+  --bs-link-color-rgb: 29, 78, 216;
+  --bs-link-hover-color-rgb: 30, 64, 175;
+  --bs-focus-ring-color: rgba(29, 78, 216, .25);
+}
+body { margin: 0; background-color: var(--app-bg); }
+.hidden { display: none !important; }              /* page scripts toggle this class */
+.small { color: var(--bs-secondary-color); }       /* muted helper text (Bootstrap's .small only sets the size) */
+
+/* =====================================================================
+   2. Bootstrap tweaks (so every page looks the same)
+   ===================================================================== */
+/* Modal widths are px in Bootstrap, so they are scaled to 80% here */
+.modal { --bs-modal-width: 400px; }
+@media (min-width: 576px) { .modal-sm { --bs-modal-width: 240px; } }
+@media (min-width: 992px) { .modal-lg, .modal-xl { --bs-modal-width: 640px; } }
+@media (min-width: 1200px) { .modal-xl { --bs-modal-width: 912px; } }
+
+.btn-primary {
+  --bs-btn-bg: #1d4ed8; --bs-btn-border-color: #1d4ed8;
+  --bs-btn-hover-bg: #1e40af; --bs-btn-hover-border-color: #1e40af;
+  --bs-btn-active-bg: #1e3a8a; --bs-btn-active-border-color: #1e3a8a;
+  --bs-btn-disabled-bg: #1d4ed8; --bs-btn-disabled-border-color: #1d4ed8;
+  --bs-btn-focus-shadow-rgb: 29, 78, 216;
+}
+.btn-outline-primary {
+  --bs-btn-color: #1d4ed8; --bs-btn-border-color: #1d4ed8;
+  --bs-btn-hover-bg: #1d4ed8; --bs-btn-hover-border-color: #1d4ed8;
+  --bs-btn-active-bg: #1d4ed8; --bs-btn-active-border-color: #1d4ed8;
+  --bs-btn-disabled-color: #1d4ed8; --bs-btn-disabled-border-color: #1d4ed8;
+  --bs-btn-focus-shadow-rgb: 29, 78, 216;
+}
+.btn-link { --bs-btn-color: #1d4ed8; --bs-btn-hover-color: #1e40af; --bs-btn-font-weight: 600; }
+.nav-pills { --bs-nav-pills-link-active-bg: #1d4ed8; }
+.form-check-input:checked { background-color: #1d4ed8; border-color: #1d4ed8; }
+.form-check-input:focus { border-color: #8aa4ec; box-shadow: 0 0 0 .25rem rgba(29, 78, 216, .25); }
+.form-control:focus, .form-select:focus { border-color: #8aa4ec; box-shadow: 0 0 0 .25rem rgba(29, 78, 216, .25); }
+
+.card { --bs-card-bg: #fff; --bs-card-cap-bg: #fff; --bs-card-cap-padding-y: .625rem; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.form-label { margin-bottom: .25rem; font-size: .75rem; font-weight: 600; color: var(--bs-secondary-color); }
+.table { --bs-table-bg: transparent; font-size: .9rem; }
+.table > thead th { font-size: .75rem; text-transform: uppercase; color: var(--bs-secondary-color); white-space: nowrap; }
+.nav-tabs .nav-link, .nav-pills .nav-link { white-space: nowrap; }
+.nav-tabs { --bs-nav-tabs-link-active-color: #1d4ed8; }
+.nav-tabs .nav-link { color: var(--bs-secondary-color); }
+.nav-tabs .nav-link.active { font-weight: 600; }
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }   /* still scrolls by swipe/wheel, bar hidden */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* =====================================================================
+   3. App shell + sidebar
+   Desktop: fixed icon rail (--rail) that expands to --sidebar-open.
+   Phones (< 768px): the sidebar is a Bootstrap offcanvas (class offcanvas-md in each page).
+   ===================================================================== */
+@view-transition { navigation: auto; }   /* page-to-page cross-fade (supported browsers) */
+
+.app-sidebar { --bs-offcanvas-width: 208px; view-transition-name: sidebar; }
+.app-main { min-height: 100vh; }
+.page-topbar { height: var(--header-height); }   /* same as the sidebar brand row */
+
+@media (min-width: 768px) {
+  .app-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 50;
+    width: var(--rail);
+    overflow: hidden;
+    border-right: 1px solid var(--bs-border-color);
+    transition: width .2s ease;
+  }
+  .app-sidebar.offcanvas-md { background-color: #fff !important; }   /* Bootstrap makes offcanvas-md transparent from md up */
+  .app-main { margin-left: var(--rail); transition: margin-left .2s ease; }
+  .app-shell.sidebar-open .app-sidebar,
+  .sidebar-open-init .app-sidebar { width: var(--sidebar-open); }
+  .app-shell.sidebar-open .app-main,
+  .sidebar-open-init .app-main { margin-left: var(--sidebar-open); }
+  /* Collapsed: footer keeps its layout (avatar never moves); only the text and sign-out button are hidden */
+  html:not(.sidebar-open-init) .app-shell:not(.sidebar-open) :is(.sidebar-user, .sidebar-signout-btn) { visibility: hidden; }
+  /* Collapsed rail: layout is identical to expanded (same heights, icons never move);
+     the rail's overflow:hidden covers the text. Links are just narrowed to the rail so the
+     hover/active pill is not cut off. */
+  html:not(.sidebar-open-init) .app-shell:not(.sidebar-open) .sidebar-link { width: calc(var(--rail) - 1rem); overflow: hidden; }
+}
+.sidebar-no-anim .app-sidebar, .sidebar-no-anim .app-main { transition: none; }
+@media (prefers-reduced-motion: reduce) { .app-sidebar, .app-main { transition: none; } }
+
+.sidebar-inner { display: flex; flex-direction: column; width: 100%; min-width: var(--sidebar-open); height: 100%; }
+.sidebar-brand {
+  display: flex; align-items: center; gap: .75rem; width: 100%; height: var(--header-height);
+  padding: 0 9.6px; font-weight: 700; white-space: nowrap; text-align: left;
+  color: var(--bs-body-color); background: none; border: 0; border-bottom: 1px solid var(--bs-border-color);
+}
+.sidebar-logo { display: grid; place-items: center; flex: none; width: 32px; height: 32px; color: #fff; background: var(--bs-primary); border-radius: .5rem; }
+.sidebar-logo svg { width: 17.6px; height: 17.6px; }
+.sidebar-link { display: flex; align-items: center; gap: .9rem; padding: .6rem .85rem; white-space: nowrap; color: var(--bs-body-color); }
+.sidebar-link:hover:not(.active) { background: var(--bs-tertiary-bg); }
+.sidebar-link svg { flex: none; width: 16px; height: 16px; }
+.sidebar-footer { padding: 9.6px; border-top: 1px solid var(--bs-border-color); }
+.sidebar-user { min-width: 0; }
+.sidebar-avatar-wrap { position: relative; flex: none; padding: 0; background: none; border: 0; }
+.sidebar-avatar {
+  position: relative; display: grid; place-items: center; width: 32px; height: 32px;
+  font-size: .85rem; font-weight: 700; color: var(--bs-primary); background: #dbeafe; border-radius: 50%;
+}
+/* Realtime state dot (supabaseClient.js sets <html data-realtime="connecting|live|offline">) */
+.sidebar-avatar::after {
+  content: ""; position: absolute; right: -1px; bottom: -1px; width: 9.6px; height: 9.6px;
+  background: var(--bs-secondary-color); border: 2px solid #fff; border-radius: 50%;
+}
+html[data-realtime="connecting"] .sidebar-avatar::after { background: var(--bs-warning); }
+html[data-realtime="live"] .sidebar-avatar::after { background: var(--bs-success); }
+html[data-realtime="offline"] .sidebar-avatar::after { background: var(--bs-danger); }
+.dropend .dropdown-menu { min-width: 12rem; }
+
+/* =====================================================================
+   4. Shared bits
+   ===================================================================== */
+.stat-label { margin: 0; font-size: .8rem; color: var(--bs-secondary-color); }
+.stat-value { margin: 0; font-size: 1.5rem; font-weight: 700; }
+.stat-sub { margin: 0; font-size: .8rem; color: var(--bs-secondary-color); }
+
+.num { text-align: right; white-space: nowrap; }
+.ctr { text-align: center; }
+.empty { padding: 1.5rem !important; text-align: center; color: var(--bs-secondary-color); }
+.actions { display: flex; gap: .375rem; white-space: nowrap; }
+.row-inactive td { color: var(--bs-secondary-color); }
+.row-click { cursor: pointer; }   /* table row that opens a details modal */
+.row-click:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: -2px; }
+.row-voided .num { text-decoration: line-through; color: var(--bs-secondary-color); }
+
+/* Modal forms (products, users, sales): header on top, body scrolls, footer always visible */
+.modal-content > form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; margin: 0; }
+.modal-content > form > .modal-body { overflow-y: auto; }
+fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+
+/* Password box with show/hide eye (password-toggle.js) */
+.password-wrap { position: relative; }
+.password-wrap .form-control { padding-right: 35.2px; }
+.password-toggle-btn {
+  position: absolute; top: 50%; right: 4.8px; transform: translateY(-50%); width: 25.6px; height: 25.6px; padding: 0;
+  display: flex; align-items: center; justify-content: center; color: var(--bs-secondary-color);
+  background: none; border: 0; border-radius: .375rem; cursor: pointer;
+}
+.password-toggle-btn svg { width: 16px; height: 16px; }
+.password-toggle-btn .icon-eye-off { display: none; }
+.password-toggle-btn.is-visible .icon-eye { display: none; }
+.password-toggle-btn.is-visible .icon-eye-off { display: block; }
+.password-toggle-btn:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 1px; }
+
+/* =====================================================================
+   5. Page bits
+   ===================================================================== */
+/* Products */
+.thumb { display: block; width: 32px; height: 32px; object-fit: cover; background: #f3f4f6; border-radius: 3.2px; }
+.thumb-empty { border: 1px dashed var(--bs-border-color); }
+.photo-current .thumb { width: 44.8px; height: 44.8px; }
+.hist-row > td { padding: .5rem .75rem .75rem 2rem; }
+
+/* =====================================================================
+   6. Login page (index.html). It does not load Bootstrap yet, so its old styles stay here, scoped.
+   Remove this section once index.html is migrated.
+   ===================================================================== */
+.auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 12.8px; font: 12.8px/1.5 var(--app-font); color: #1f2937; }
+.auth-page, .auth-page *, .auth-page *::before, .auth-page *::after { box-sizing: border-box; }
+.auth-page .card { width: 100%; max-width: 304px; padding: 22.4px 19.2px; background: #fff; border: 1px solid #d1d5db; border-radius: 4.8px; }
+.auth-page h1 { margin: 0 0 3.2px; font-size: 1.5rem; }
+.auth-page .subtitle { margin: 0 0 16px; color: #6b7280; }
+.auth-page .field { margin-bottom: 12.8px; }
+.auth-page .field label { display: block; margin-bottom: 3.2px; font-weight: 600; font-size: .9rem; }
+.auth-page .input { width: 100%; padding: 8px 9.6px; font: inherit; color: inherit; background: #fff; border: 1px solid #d1d5db; border-radius: 4.8px; }
+.auth-page .password-wrap .input { padding-right: 35.2px; }
+.auth-page .input:focus-visible, .auth-page .btn:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 1px; }
+.auth-page .checkbox { display: flex; align-items: center; gap: 6.4px; margin-bottom: 12.8px; font-size: .9rem; }
+.auth-page .btn { display: inline-block; padding: 8px 12.8px; font: inherit; font-weight: 600; color: #fff; background: #1d4ed8; border: 0; border-radius: 4.8px; cursor: pointer; }
+.auth-page .btn:hover { background: #1e40af; }
+.auth-page .btn:disabled { opacity: .6; cursor: not-allowed; }
+.auth-page .btn-block { width: 100%; }
+.auth-page .alert { margin-bottom: 12.8px; padding: 8px 9.6px; font-size: .9rem; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4.8px; }
+.auth-page .alert-ok { color: #166534; background: #f0fdf4; border-color: #bbf7d0; }

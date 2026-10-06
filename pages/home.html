@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Home</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="../assets/css/styles.css?v=5">
+  <link rel="stylesheet" href="../assets/css/sale-form.css?v=1">
+  <script src="../assets/js/sidebar-init.js?v=2"></script>
+</head>
+<body data-page="home">
+  <div class="app-shell" id="appShell">
+    <!-- Sidebar: fixed rail on desktop, Bootstrap offcanvas on phones (filled by sidebar.js) -->
+    <aside class="app-sidebar offcanvas-md offcanvas-start" id="sidebarRoot" tabindex="-1" aria-label="Main menu"></aside>
+
+    <div class="app-main">
+      <header class="page-topbar d-flex align-items-center gap-2 px-3 px-md-4 bg-white border-bottom">
+        <button type="button" class="btn btn-outline-secondary btn-sm d-md-none" data-bs-toggle="offcanvas" data-bs-target="#sidebarRoot" aria-controls="sidebarRoot" aria-label="Open menu"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></button>
+        <h1 class="page-title h5 mb-0">Home</h1>
+      </header>
+
+      <main class="page-content p-3 p-md-4">
+        <!-- 1. Welcome + quick actions -->
+        <section class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-3">
+          <div>
+            <h2 class="h4 mb-0" id="greeting">Welcome</h2>
+            <p class="small mb-0" id="todayLabel"></p>
+          </div>
+          <div class="d-flex flex-wrap gap-2" id="quickActions"></div>
+        </section>
+
+        <!-- 2. Today at a glance (shown only to users who can see sales) -->
+        <div id="todayBlock" class="hidden">
+          <section class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-3" aria-label="Today">
+            <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Today's net revenue</p><p class="stat-value" id="statNet">—</p><p class="stat-sub" id="statNetSub">Pending + Confirmed</p></div></div></div>
+            <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Cash</p><p class="stat-value" id="statCash">—</p><p class="stat-sub">Today</p></div></div></div>
+            <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Bank</p><p class="stat-value" id="statBank">—</p><p class="stat-sub">Today</p></div></div></div>
+            <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Waiting for confirmation</p><p class="stat-value" id="statPending">—</p><p class="stat-sub" id="statPendingSub"></p></div></div></div>
+          </section>
+
+          <!-- 3. Latest sales today -->
+          <section class="card">
+            <div class="card-header panel-head">
+              <h2 class="h6 mb-0">Latest sales today</h2>
+              <a class="link-primary fw-semibold small text-decoration-none" href="sales.html">View all</a>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-hover mb-0">
+                <thead>
+                  <tr><th>Receipt</th><th>Items</th><th class="num">Total</th><th>Status</th></tr>
+                </thead>
+                <tbody id="recentBody"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../assets/config.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/auth.js"></script>
+  <script src="../assets/js/sidebar.js?v=2"></script>
+  <script src="../assets/js/ui.js?v=5"></script>
+  <script src="../assets/js/sale-form.js?v=2"></script>
+  <script src="../assets/js/home.js?v=3"></script>
+</body>
+</html>

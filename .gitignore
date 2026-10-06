@@ -1,0 +1,7 @@
+.DS_Store
+Thumbs.db
+*.local
+node_modules/
+
+# Ignore the project url & api
+assets/config.js

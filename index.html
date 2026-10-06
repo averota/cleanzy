@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body class="auth-page">
+  <main class="card">
+    <h1>Sign in</h1>
+    <p class="subtitle">Motorbike Wash Revenue</p>
+
+    <form id="login-form" novalidate>
+      <div class="field">
+        <label for="email">Email</label>
+        <input class="input" id="email" name="email" type="email" autocomplete="username" required autofocus>
+      </div>
+
+      <div class="field">
+        <label for="password">Password</label>
+        <div class="password-wrap">
+          <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
+          <button type="button" class="password-toggle-btn" data-target="password"
+                  aria-label="Show password" aria-pressed="false">
+            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+            <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20C5 20 1 12 1 12a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <label class="checkbox">
+        <input type="checkbox" id="remember" checked>
+        Remember me
+      </label>
+
+      <button type="submit" id="submit" class="btn btn-block">Sign in</button>
+    </form>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/js/supabaseClient.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/password-toggle.js"></script>
+  <script src="assets/js/ui.js?v=2"></script>
+  <script>
+    const HOME_URL = 'pages/home.html';
+    const REMEMBER_KEY = 'ess_remember_session';   // read by supabaseClient.js
+
+    const form = document.getElementById('login-form');
+    const submitBtn = document.getElementById('submit');
+    const rememberBox = document.getElementById('remember');
+
+    const REASONS = {
+      'inactive':   'This account is deactivated. Contact your Admin.',
+      'no-profile': 'This account has no access. Contact your Admin.',
+      'error':      'Could not verify your account. Please try again.'
+    };
+
+    // Pop-up message (see ui.js). sticky = stays until the user clicks OK / ×.
+    let errorToast = null;
+    function showError(message, sticky = false) {
+      errorToast?.dismiss();
+      errorToast = UI.toast(message, 'error', { sticky });
+    }
+
+    // Restore the last "Remember me" choice (default: checked).
+    rememberBox.checked = localStorage.getItem(REMEMBER_KEY) !== '0';
+
+    // Message passed from a protected page that signed the user out.
+    const reason = new URLSearchParams(location.search).get('reason');
+    if (REASONS[reason]) showError(REASONS[reason], true);
+    if (!SUPABASE_CONFIGURED) showError('Supabase is not configured. Create assets/config.js from assets/config_example.js.', true);
+
+    // Already signed in -> go straight to the home (it re-checks the account).
+    (async () => {
+      const { data } = await sb.auth.getSession();
+      if (data?.session) location.replace(HOME_URL);
+      else { try { sessionStorage.removeItem('mw.sidebar.v1'); } catch (_) {} }   // drop the previous user's cached sidebar
+    })();
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorToast?.dismiss();
+
+      const email = form.email.value.trim().toLowerCase();
+      const password = form.password.value;
+      if (!email || !password) { showError('Enter your email and password.'); return; }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Signing in…';
+
+      // Must be set before sign-in: supabaseClient.js reads it when saving the session.
+      localStorage.setItem(REMEMBER_KEY, rememberBox.checked ? '1' : '0');
+
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign in';
+        showError(
+          /invalid login credentials/i.test(error.message) ? 'Invalid email or password.'
+          : /banned/i.test(error.message) ? REASONS.inactive
+          : error.message,
+          /banned/i.test(error.message)
+        );
+        return;
+      }
+
+      const result = await Auth.validate();
+      if (!result.ok) {
+        await sb.auth.signOut();
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign in';
+        showError(REASONS[result.reason] || REASONS.error, true);
+        return;
+      }
+
+      location.replace(HOME_URL);
+    });
+  </script>
+</body>
+</html>

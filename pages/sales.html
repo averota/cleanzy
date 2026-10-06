@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sales</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="../assets/css/styles.css?v=5">
+  <link rel="stylesheet" href="../assets/css/sale-form.css?v=1">
+  <script src="../assets/js/sidebar-init.js?v=2"></script>
+</head>
+<body data-page="sales">
+  <div class="app-shell" id="appShell">
+    <!-- Sidebar: fixed rail on desktop, Bootstrap offcanvas on phones (filled by sidebar.js) -->
+    <aside class="app-sidebar offcanvas-md offcanvas-start" id="sidebarRoot" tabindex="-1" aria-label="Main menu"></aside>
+
+    <div class="app-main">
+      <header class="page-topbar d-flex align-items-center gap-2 px-3 px-md-4 bg-white border-bottom">
+        <button type="button" class="btn btn-outline-secondary btn-sm d-md-none" data-bs-toggle="offcanvas" data-bs-target="#sidebarRoot" aria-controls="sidebarRoot" aria-label="Open menu"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></button>
+        <h1 class="page-title h5 mb-0">Sales</h1>
+      </header>
+
+      <main class="page-content p-3 p-md-4">
+        <!-- 1. Stat cards (for the date selected in the table filter) -->
+        <section class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-3" aria-label="Summary">
+          <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Net revenue</p><p class="stat-value" id="statNet">—</p><p class="stat-sub" id="statNetSub">Pending + Confirmed</p></div></div></div>
+          <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Confirmed</p><p class="stat-value" id="statConfirmed">—</p><p class="stat-sub" id="statConfirmedSub"></p></div></div></div>
+          <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Pending</p><p class="stat-value" id="statPending">—</p><p class="stat-sub" id="statPendingSub"></p></div></div></div>
+          <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Voided</p><p class="stat-value" id="statVoided">—</p><p class="stat-sub">Not counted in revenue</p></div></div></div>
+        </section>
+
+        <div id="salesLayout">
+          <!-- 2. Sales table (+ "New sale" button, opens the modal below) -->
+          <section class="card">
+            <div class="card-header panel-head">
+              <h2 class="h6 mb-0">Sales</h2>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <span class="small" id="filterSummary"></span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="filterBtn" aria-expanded="false" aria-controls="filterBar">
+                  Filters <span class="badge text-bg-primary ms-1 hidden" id="filterCount">0</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="exportBtn">Export Excel</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary hidden" id="uploadBtn">Upload</button>
+                <button type="button" class="btn btn-sm btn-primary" id="newSaleBtn">+ New sale</button>
+              </div>
+            </div>
+
+            <!-- Collapsible filters -->
+            <div class="bg-body-tertiary border-bottom p-3 hidden" id="filterBar">
+              <div class="row g-2">
+                <div class="col-6 col-lg-2"><label class="form-label" for="fFrom">From</label><input class="form-control form-control-sm" type="date" id="fFrom"></div>
+                <div class="col-6 col-lg-2"><label class="form-label" for="fTo">To</label><input class="form-control form-control-sm" type="date" id="fTo"></div>
+                <div class="col-6 col-lg-2">
+                  <label class="form-label" for="fStatus">Status</label>
+                  <select class="form-select form-select-sm" id="fStatus"><option value="">All</option><option>Pending</option><option>Confirmed</option><option>Voided</option></select>
+                </div>
+                <div class="col-6 col-lg-2">
+                  <label class="form-label" for="fPayment">Payment</label>
+                  <select class="form-select form-select-sm" id="fPayment"><option value="">All</option><option>Cash</option><option>Bank</option></select>
+                </div>
+                <div class="col-12 col-lg-4">
+                  <label class="form-label" for="fSearch">Search</label>
+                  <input class="form-control form-control-sm" type="search" id="fSearch" placeholder="Receipt no., plate or customer" autocomplete="off">
+                </div>
+              </div>
+              <div class="filter-actions d-flex flex-wrap align-items-center gap-2 mt-2">
+                <span class="small">Quick:</span>
+                <button type="button" class="btn btn-link btn-sm p-0" data-preset="today">Today</button>
+                <button type="button" class="btn btn-link btn-sm p-0" data-preset="yesterday">Yesterday</button>
+                <button type="button" class="btn btn-link btn-sm p-0" data-preset="month">This month</button>
+                <button type="button" class="btn btn-link btn-sm p-0" id="resetFilters">Reset</button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-hover mb-0">
+                <thead>
+                  <tr>
+                    <th>Receipt</th><th>Plate / Customer</th><th>Items</th><th>Payment</th>
+                    <th class="num">Total</th><th>Status</th><th id="actionTh" class="hidden">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="salesBody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+              </table>
+            </div>
+
+            <!-- Footer: confirm all (left) + paging (right) -->
+            <div class="card-footer bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-primary hidden" id="confirmAllBtn">Confirm all pending</button>
+                <span class="small" id="confirmProgress"></span>
+              </div>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <label class="small" for="pageSize">Rows</label>
+                <select class="form-select form-select-sm w-auto" id="pageSize" aria-label="Rows per page">
+                  <option>10</option><option>25</option><option>50</option><option>100</option>
+                </select>
+                <span class="small" id="pageInfo"></span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="prevBtn" aria-label="Previous page">‹ Prev</button>
+                <span class="small" id="pageNum"></span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="nextBtn" aria-label="Next page">Next ›</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../assets/config.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/auth.js"></script>
+  <script src="../assets/js/sidebar.js?v=2"></script>
+  <script src="../assets/js/ui.js?v=5"></script>
+  <script src="../assets/js/sale-form.js?v=3"></script>
+  <script src="../assets/js/sale-upload.js?v=1"></script>
+  <script src="../assets/js/sales.js?v=9"></script>
+</body>
+</html>
