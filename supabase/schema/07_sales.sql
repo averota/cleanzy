@@ -14,11 +14,15 @@
 --                          Confirmed sale (see update_sale below).
 --     void_sale(id, reason) -> Pending -> Voided. Confirmed sales can only be voided
 --                          by Super Admin (reason required, confirmation record is kept).
+--     delete_sale(id)   -> Super Admin only. Permanently deletes a sale of ANY status
+--                          together with its items. Cannot be undone.
 -- * All amounts are stored in KHR. The price row id and exchange rate used are
 --   saved with the sale, so later price/rate changes never alter past reports.
--- * Sales cannot be deleted. Normal users cannot edit them either: to correct a mistake,
---   void it (while Pending) and enter a new sale. Super Admin can also edit a Pending or
---   Confirmed sale with update_sale, or void a Confirmed one.
+-- * Only Super Admin can delete a sale (delete_sale). Normal users cannot delete or edit
+--   sales: to correct a mistake, void it (while Pending) and enter a new sale. Super Admin
+--   can also edit a Pending or Confirmed sale with update_sale, void a Confirmed one, or
+--   delete any sale. Voiding keeps the record; deleting removes it (the receipt number is
+--   not reused).
 -- * Discounts: per item and/or per receipt, either 'Percent' or 'Amount' (KHR).
 -- * Rounding: unit price, each line total and the receipt total are rounded down
 --   to the nearest 100 riel. Stored discount = the effective (rounded) discount.
@@ -798,6 +802,30 @@ begin
    where id = p_sale_id;
 end $$;
 
+-- =====================================================================
+-- delete_sale  (Super Admin only)
+-- Permanently removes the sale and its items, whatever the status.
+-- Direct DELETE on the tables stays blocked (no policy, no grant); only this function can do it.
+-- =====================================================================
+create or replace function public.delete_sale(p_sale_id uuid)
+returns void
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if not public.is_super_admin() then
+    raise exception 'Only Super Admin can delete sales';
+  end if;
+
+  perform 1 from public.sales where id = p_sale_id for update;
+  if not found then
+    raise exception 'Sale not found';
+  end if;
+
+  delete from public.sale_items where sale_id = p_sale_id;
+  delete from public.sales where id = p_sale_id;
+end $$;
+
 -- ---------- Function access ---------------------------------------------
 revoke execute on function public.create_sale(jsonb, text, text, text, text, numeric, text, text, date, bigint, text, time) from public, anon;
 revoke execute on function public.update_sale(uuid, jsonb, text, text, text, text, numeric, text, text, date, bigint, text, time) from public, anon;
@@ -805,11 +833,13 @@ revoke execute on function public.resolve_sale_header(date, time, bigint, text) 
 revoke execute on function public.resolve_sale_line(jsonb, int, timestamptz, numeric) from public, anon, authenticated;
 revoke execute on function public.confirm_sale(uuid) from public, anon;
 revoke execute on function public.void_sale(uuid, text) from public, anon;
+revoke execute on function public.delete_sale(uuid) from public, anon;
 
 grant execute on function public.create_sale(jsonb, text, text, text, text, numeric, text, text, date, bigint, text, time) to authenticated;
 grant execute on function public.update_sale(uuid, jsonb, text, text, text, text, numeric, text, text, date, bigint, text, time) to authenticated;
 grant execute on function public.confirm_sale(uuid) to authenticated;
 grant execute on function public.void_sale(uuid, text) to authenticated;
+grant execute on function public.delete_sale(uuid) to authenticated;
 
 -- ---------- Realtime (live updates to the front-end) -------------------
 do $$

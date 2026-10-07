@@ -12,11 +12,11 @@
 //   SaleForm.openNew();       // blank "New sale" form (needs permission enter_revenue)
 //   SaleForm.open(saleId);    // Super Admin: edit (Pending / Confirmed). Everyone else, or a Voided sale: view only.
 //   SaleForm.open(saleId, { view: true });   // always read-only, even for Super Admin (e.g. clicking a table row)
-//                                            // the read-only view carries the Confirm / Void / Edit buttons the user is allowed to use
+//                                            // the read-only view carries the Confirm / Void / Edit / Delete buttons the user is allowed to use (Delete: Super Admin only)
 //   SaleForm.confirmSale({ id, receipt_no, status });   // confirm one sale (asks first). null = cancelled, true = done, false = failed
 //
 // Reads: product tables, current_prices, current_exchange_rate, sales (+ sale_items).
-// Writes only through the database functions create_sale / update_sale.
+// Writes only through the database functions create_sale / update_sale / confirm_sale / void_sale / delete_sale.
 // Products and prices are loaded the first time the form is opened.
 (() => {
   const CHIP_MAX = 4;   // a product with this many choices or fewer shows them all as buttons
@@ -111,6 +111,7 @@
                 <button type="button" class="btn btn-primary btn-sm hidden" id="saleActConfirm" data-act="confirm">Confirm</button>
                 <button type="button" class="btn btn-outline-danger btn-sm hidden" id="saleActVoid" data-act="void">Void</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm hidden" id="saleActEdit" data-act="edit">Edit</button>
+                <button type="button" class="btn btn-danger btn-sm hidden ms-auto" id="saleActDelete" data-act="delete">Delete</button>
               </div>
             </form>
       </div>
@@ -682,15 +683,19 @@
   const allowed = (s) => ({
     confirm: s.status === 'Pending' && can('confirm_revenue'),
     void: (s.status === 'Pending' && (can('confirm_revenue') || isOwn(s))) || (isSuper() && s.status === 'Confirmed'),
-    edit: isSuper() && s.status !== 'Voided'   // Super Admin is not limited by status
+    edit: isSuper() && s.status !== 'Voided',  // Super Admin is not limited by status
+    delete: isSuper()                          // Super Admin only, any status (enforced again by delete_sale)
   });
 
-  // kind = 'confirm' | 'void'. Returns null when the user cancels, true when done, false when the database refused.
+  // kind = 'confirm' | 'void' | 'delete'. Returns null when the user cancels, true when done, false when the database refused.
   async function act(kind, s) {
     let call;
     if (kind === 'confirm') {
       if (!confirm(`Confirm receipt #${s.receipt_no}?${isSuper() ? '' : ' A confirmed sale can no longer be voided.'}`)) return null;
       call = sb.rpc('confirm_sale', { p_sale_id: s.id });
+    } else if (kind === 'delete') {
+      if (!confirm(`PERMANENTLY DELETE receipt #${s.receipt_no} (${s.status}, ${fmt(s.total_khr)})?\n\nThis cannot be undone. To keep a record, use Void instead.`)) return null;
+      call = sb.rpc('delete_sale', { p_sale_id: s.id });
     } else {
       const reason = prompt(`Reason for voiding${s.status === 'Confirmed' ? ' CONFIRMED' : ''} receipt #${s.receipt_no}:`);
       if (!reason || !reason.trim()) return null;
@@ -698,6 +703,7 @@
     }
     const { error } = await call;
     if (error) toast(error.message, 'error', { sticky: true });
+    else if (kind === 'delete') toast(`Receipt #${s.receipt_no} deleted.`, 'ok');
     return !error;
   }
 
@@ -732,7 +738,8 @@
     $('saleActConfirm').classList.toggle('hidden', !a.confirm);
     $('saleActVoid').classList.toggle('hidden', !a.void);
     $('saleActEdit').classList.toggle('hidden', !a.edit);
-    $('saleViewActions').classList.toggle('hidden', !(a.confirm || a.void || a.edit));
+    $('saleActDelete').classList.toggle('hidden', !a.delete);
+    $('saleViewActions').classList.toggle('hidden', !(a.confirm || a.void || a.edit || a.delete));
     $('formFields').disabled = view;
     $('saleSaveBtn').classList.toggle('hidden', view);
     $('saleClearBtn').classList.toggle('hidden', view);
