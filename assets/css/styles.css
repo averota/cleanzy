@@ -140,6 +140,12 @@ html[data-realtime="offline"] .sidebar-avatar::after { background: var(--bs-dang
 .stat-value { margin: 0; font-size: 1.5rem; font-weight: 700; }
 .stat-sub { margin: 0; font-size: .8rem; color: var(--bs-secondary-color); }
 
+/* List tables: roomier left/right cell padding */
+.card .table-responsive > .table > :not(caption) > * > * { padding-left: 1rem; padding-right: 1rem; }
+/* Column widths: .fit = as narrow as its content (date, status, order...), .wide = room for long text (description, remark), .mid = medium, shares free space */
+.fit { width: 1%; white-space: nowrap; }
+.wide { min-width: 14rem; }
+.mid { min-width: 10rem; }
 .num { text-align: right; white-space: nowrap; }
 .ctr { text-align: center; }
 .empty { padding: 1.5rem !important; text-align: center; color: var(--bs-secondary-color); }
@@ -175,7 +181,6 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .thumb { display: block; width: 32px; height: 32px; object-fit: cover; background: #f3f4f6; border-radius: 3.2px; }
 .thumb-empty { border: 1px dashed var(--bs-border-color); }
 .photo-current .thumb { width: 44.8px; height: 44.8px; }
-.hist-row > td { padding: .5rem .75rem .75rem 2rem; }
 
 /* =====================================================================
    6. Login page (index.html). It does not load Bootstrap yet, so its old styles stay here, scoped.

@@ -3,6 +3,7 @@
 //   - Reading users and permissions: direct table queries (RLS: Admin / Super Admin only for users).
 //   - Creating / changing / deleting users: Edge Functions create-user and manage-user.
 //   - Permission grid: inserts / deletes rows in role_permissions (RLS: Admin / Super Admin).
+// Click a row = details modal with every action button; each row also has a three-dot menu with the same actions.
 // Load AFTER sidebar.js (it fires `app:ready`).
 (() => {
   const TZ = 'Asia/Phnom_Penh';
@@ -64,6 +65,7 @@
   let me;
   let rows = [];
   let editing = null;   // user being edited, or null for a new one
+  let detail = null;    // user shown in the details modal (null when closed)
 
   const nameOf = (id) => (id === null ? 'Admin' : (rows.find((r) => r.id === id)?.name ?? '—'));  // NULL = Super Admin
   const isSelf = (r) => r.id === me.user.id;
@@ -78,35 +80,85 @@
     renderList();
   }
 
+  // Columns of the users table (used by the list AND the details modal). fit = as narrow as content, wide = roomy.
+  const userCols = [
+    { h: 'Name', cls: 'wide', cell: (r) => `${esc(r.name)}${isSelf(r) ? ' <span class="small">(you)</span>' : ''}${r.position ? `<br><span class="small">${esc(r.position)}</span>` : ''}` },
+    { h: 'Email', cls: 'wide', cell: (r) => esc(r.email) },
+    { h: 'Role', cls: 'fit', cell: (r) => esc(r.role) },
+    { h: 'Status', cls: 'fit', cell: (r) => badge(r.is_active ? 'Active' : 'Inactive') },
+    { h: 'Last updated', cls: 'fit', cell: (r) => `${dateStr(r.updated_at)}<br><span class="small">by ${esc(nameOf(r.updated_by))}</span>` }
+  ];
+
+  // The one list of row actions: used by the three-dot menu AND the details modal.
+  // [action, label, button class in the details modal]
+  const actionsOf = (r) => [
+    ['edit', 'Edit', 'btn-primary'],
+    !isSelf(r) && ['toggle', r.is_active ? 'Deactivate' : 'Activate', 'btn-outline-secondary'],
+    !isSelf(r) && ['delete', 'Delete', 'btn-outline-danger']
+  ].filter(Boolean);
+
+  const DOTS = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="19" r="2"></circle></svg>';
+
+  const menuHtml = (r) => `<div class="dropdown">
+    <button type="button" class="btn btn-sm btn-outline-secondary border-0 px-2" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false" aria-label="Actions">${DOTS}</button>
+    <ul class="dropdown-menu dropdown-menu-end">${actionsOf(r).map(([act, label]) =>
+      `${act === 'delete' ? '<li><hr class="dropdown-divider"></li>' : ''}<li><button type="button" class="dropdown-item${act === 'delete' ? ' text-danger' : ''}" data-act="${act}" data-id="${r.id}">${label}</button></li>`).join('')}</ul>
+  </div>`;
+
   function renderList() {
     const term = $('search').value.trim().toLowerCase();
     const list = rows.filter((r) => ($('showInactive').checked || r.is_active)
       && (!term || [r.name, r.position, r.email, r.role].join(' ').toLowerCase().includes(term)));
 
     $('listBody').innerHTML = list.length ? list.map((r) => `
-      <tr class="${r.is_active ? '' : 'row-inactive'}">
-        <td>${esc(r.name)}${isSelf(r) ? ' <span class="small">(you)</span>' : ''}${r.position ? `<br><span class="small">${esc(r.position)}</span>` : ''}</td>
-        <td>${esc(r.email)}</td>
-        <td>${esc(r.role)}</td>
-        <td>${badge(r.is_active ? 'Active' : 'Inactive')}</td>
-        <td>${dateStr(r.updated_at)}<br><span class="small">by ${esc(nameOf(r.updated_by))}</span></td>
-        <td><div class="actions">
-          <button type="button" class="btn btn-sm btn-outline-secondary" data-act="edit" data-id="${r.id}">Edit</button>
-          ${isSelf(r) ? '' : `
-          <button type="button" class="btn btn-sm btn-outline-secondary" data-act="toggle" data-id="${r.id}">${r.is_active ? 'Deactivate' : 'Activate'}</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary" data-act="delete" data-id="${r.id}">Delete</button>`}
-        </div></td>
+      <tr class="row-click${r.is_active ? '' : ' row-inactive'}" tabindex="0" data-id="${r.id}">
+        ${userCols.map((c) => `<td class="${c.cls || ''}">${c.cell(r)}</td>`).join('')}
+        <td class="row-menu ctr">${menuHtml(r)}</td>
       </tr>`).join('')
       : '<tr><td class="empty" colspan="6">No users.</td></tr>';
   }
 
-  async function onListClick(e) {
+  // ===================================================================
+  // Details modal (row click): all fields and every action button
+  // ===================================================================
+  function showDetail(id) {
+    const row = rows.find((r) => r.id === id);
+    if (!row) return;
+    detail = row;
+    $('detailBody').innerHTML = `<dl class="row mb-0">${userCols.map((c) =>
+      `<dt class="col-sm-4 small fw-normal">${esc(c.h)}</dt><dd class="col-sm-8">${c.cell(row)}</dd>`).join('')}</dl>`;
+    $('detailActions').innerHTML = actionsOf(row).map(([act, label, cls]) =>
+      `<button type="button" class="btn btn-sm ${cls}" data-act="${act}" data-id="${row.id}">${label}</button>`).join('');
+    UI.modal('detailPanel').show();
+  }
+
+  // Run fn once the details modal is fully closed (Bootstrap cannot stack two modals).
+  function afterDetailClosed(fn) {
+    if (!detail) return fn();
+    $('detailPanel').addEventListener('hidden.bs.modal', fn, { once: true });
+    UI.modal('detailPanel').hide();
+  }
+
+  function onListClick(e) {
+    if (e.target.closest('button[data-act]')) return onActionClick(e);
+    if (e.target.closest('.row-menu')) return undefined;   // the three-dot button itself
+    const tr = e.target.closest('tr[data-id]');
+    if (tr) showDetail(tr.dataset.id);
+    return undefined;
+  }
+
+  function onListKey(e) {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr[data-id]')) { e.preventDefault(); showDetail(e.target.dataset.id); }
+  }
+
+  // Same handler for the three-dot menu and the details modal buttons.
+  async function onActionClick(e) {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
     const row = rows.find((r) => r.id === btn.dataset.id);
     if (!row) return;
 
-    if (btn.dataset.act === 'edit') return openForm(row);
+    if (btn.dataset.act === 'edit') return afterDetailClosed(() => openForm(row));
 
     let body;
     if (btn.dataset.act === 'toggle') {
@@ -119,6 +171,7 @@
 
     btn.disabled = true;
     try { await callFn('manage-user', body); } catch (err) { toast(err.message, 'error', { sticky: true }); }
+    if (detail) UI.modal('detailPanel').hide();
     await load();
   }
 
@@ -258,6 +311,9 @@
 
     $('tabs').addEventListener('click', (e) => { const t = e.target.closest('[data-tab]'); if (t) selectTab(t.dataset.tab); });
     $('listBody').addEventListener('click', onListClick);
+    $('listBody').addEventListener('keydown', onListKey);
+    $('detailActions').addEventListener('click', onActionClick);
+    $('detailPanel').addEventListener('hidden.bs.modal', () => { detail = null; });
     $('search').addEventListener('input', renderList);
     $('showInactive').addEventListener('change', renderList);
     $('newBtn').addEventListener('click', () => openForm(null));
