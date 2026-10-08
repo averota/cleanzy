@@ -8,6 +8,8 @@
 (() => {
   const { $, esc, toast, badge, fetchAll, fmt, signed, todayStr, dayLabel, shiftDay } = UI;
   const hhmm = (t) => (t || '').slice(0, 5);   // 'HH:MM:SS' -> 'HH:MM'
+  const ddmmyyyy = (d) => (d || '').split('-').reverse().join('-');   // 'YYYY-MM-DD' -> 'DD-MM-YYYY'
+  const dateTime = (d, t) => `${ddmmyyyy(d)} • ${hhmm(t)}`;   // 'DD-MM-YYYY • HH:MM'
 
   let me;            // app:ready detail
   let can = () => false;
@@ -21,10 +23,13 @@
   // ===================================================================
   const PAGE_SIZES = [10, 25, 50, 100];
   const PAGE_SIZE_KEY = 'mw.sales.pageSize';
-  const TABLE_SELECT = 'id, receipt_no, status, payment_method, plate_no, customer, remark, void_reason, total_khr, discount_khr, adjustment_khr, sale_time, created_by, sale_items(line_no, description, quantity, discount_khr)';
+  const TABLE_SELECT = 'id, receipt_no, status, payment_method, plate_no, customer, remark, void_reason, total_khr, discount_khr, adjustment_khr, sale_date, sale_time, created_by, sale_items(line_no, description, quantity, discount_khr)';
   const EXPORT_SELECT = 'id, receipt_no, sale_date, sale_time, status, payment_method, plate_no, customer, remark, void_reason, subtotal_khr, discount_khr, adjustment_khr, adjustment_reason, total_khr, created_at, sale_items(line_no, description, quantity, gross_khr, discount_khr, total_khr)';
 
-  const defaultFilters = (d = todayStr()) => ({ from: d, to: d, status: '', payment: '', search: '' });
+  const DEFAULT_DAYS = 30;   // the page opens on the last 30 days (today included)
+  const defaultRange = () => ({ from: shiftDay(todayStr(), -(DEFAULT_DAYS - 1)), to: todayStr() });
+  // No argument = default range (last 30 days). With a date = that single day (used after saving a sale).
+  const defaultFilters = (d) => ({ ...(d ? { from: d, to: d } : defaultRange()), status: '', payment: '', search: '' });
 
   let f = defaultFilters();
   let page = 1;
@@ -42,10 +47,13 @@
 
   function updateFilterSummary() {
     const t = todayStr();
-    $('filterSummary').textContent = f.from === f.to
-      ? (f.from === t ? 'Today' : dayLabel(f.from))
-      : `${dayLabel(f.from)} – ${dayLabel(f.to)}`;
-    const n = (f.from !== t || f.to !== t ? 1 : 0) + (f.status ? 1 : 0) + (f.payment ? 1 : 0) + (f.search ? 1 : 0);
+    const def = defaultRange();
+    const isDefault = f.from === def.from && f.to === def.to;
+    $('filterSummary').textContent = isDefault ? `Last ${DEFAULT_DAYS} days`
+      : f.from === f.to
+        ? (f.from === t ? 'Today' : dayLabel(f.from))
+        : `${dayLabel(f.from)} – ${dayLabel(f.to)}`;
+    const n = (isDefault ? 0 : 1) + (f.status ? 1 : 0) + (f.payment ? 1 : 0) + (f.search ? 1 : 0);
     $('filterCount').textContent = String(n);
     $('filterCount').classList.toggle('hidden', n === 0);
   }
@@ -75,10 +83,12 @@
     const btn = e.target.closest('[data-preset]');
     if (!btn) return;
     const t = todayStr();
+    const lastMonthEnd = shiftDay(`${t.slice(0, 8)}01`, -1);   // day before the 1st of this month
     const range = {
       today: [t, t],
       yesterday: [shiftDay(t, -1), shiftDay(t, -1)],
-      month: [`${t.slice(0, 8)}01`, t]
+      month: [`${t.slice(0, 8)}01`, t],
+      lastMonth: [`${lastMonthEnd.slice(0, 8)}01`, lastMonthEnd]
     }[btn.dataset.preset];
     applyFilters({ ...f, from: range[0], to: range[1] });
   }
@@ -189,7 +199,7 @@
       : `<td>${r.status === 'Pending' ? `<button type="button" class="btn btn-primary btn-sm" data-action="confirm" data-id="${r.id}">Confirm</button>` : ''}</td>`;
 
     return `<tr class="row-click${r.status === 'Voided' ? ' row-voided' : ''}" data-id="${r.id}" tabindex="0" title="View details">
-      <td>#${r.receipt_no}<br><span class="small">${hhmm(r.sale_time)}</span></td>
+      <td>#${r.receipt_no}<br><span class="small">${dateTime(r.sale_date, r.sale_time)}</span></td>
       <td>${buyer}</td>
       <td>${items}${notes ? `<br><span class="small">${notes}</span>` : ''}</td>
       <td>${esc(r.payment_method)}</td>
