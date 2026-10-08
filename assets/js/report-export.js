@@ -3,6 +3,7 @@
    Reads the rendered table (#reportHead / #reportBody / #reportFoot), the filters and the stat cards,
    so it exports exactly what is on screen (including column filters) for every tab.
    PDF  : built from a clean A4 layout and downloaded directly (html2pdf.js, loaded on first use).
+          The sheet is measured first and scaled so every column fits the page width.
    Excel: SheetJS, loaded on first use. */
 (function () {
   'use strict';
@@ -148,6 +149,8 @@
       '<div class="foot"><span>Generated ' + esc(r.generated) + '</span><span>Revenue Report · ' + esc(r.tabName) + '</span></div>';
   }
 
+  var MM_TO_PX = 96 / 25.4;
+
   function exportPdf() {
     var r = readReport();
     if (!r) return alert('There is no report data to export yet.');
@@ -156,15 +159,34 @@
     busy(btn, true);
 
     var cols = r.head.length ? r.head[0].reduce(function (n, c) { return n + c.span; }, 0) : 0;
-    var landscape = cols > 6;
     var margin = 10;                                   // mm
-    var widthPx = Math.round(((landscape ? 297 : 210) - margin * 2) / 25.4 * 96);
+    var portraitPx = Math.round((210 - margin * 2) * MM_TO_PX);
+    var landscapePx = Math.round((297 - margin * 2) * MM_TO_PX);
 
+    // The off-screen position goes on a wrapper, NOT on the sheet: html2pdf copies the sheet with its
+    // inline style, so an off-screen sheet gives a blank PDF.
+    var wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:fixed;left:-10000px;top:0;';
     var holder = document.createElement('div');
     holder.className = 'pdf-sheet';
-    holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:' + widthPx + 'px;';
     holder.innerHTML = sheetHtml(r);
-    document.body.appendChild(holder);
+    wrapper.appendChild(holder);
+    document.body.appendChild(wrapper);
+
+    // Measure the narrowest width the table can have (nothing wider is ever cut off):
+    // squeeze the sheet, then read the table's real width.
+    holder.style.width = '1px';
+    var table = holder.querySelector('table');
+    var natural = table ? Math.ceil(table.getBoundingClientRect().width) : 0;
+
+    // Landscape when there are many columns or the table is wider than a portrait page.
+    var landscape = cols > 6 || natural > portraitPx;
+    var pagePx = landscape ? landscapePx : portraitPx;
+
+    // If the table is still wider than the page, render the sheet at its full width:
+    // html2pdf then shrinks the whole sheet to fit the page width, so no column is cropped.
+    var sheetPx = Math.max(pagePx, natural);
+    holder.style.width = sheetPx + 'px';
 
     var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
 
@@ -174,13 +196,16 @@
           margin: margin,
           filename: fileName(r, 'pdf'),
           image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
+          // windowWidth/width = the sheet's own width, so html2canvas lays the copy out at exactly that width.
+          // x/y = 0 starts the capture at the sheet's left/top edge. Without x: 0 the capture started at the
+          // sheet's centred on-screen position, which cut off the left side and left empty space on the right.
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, x: 0, y: 0, windowWidth: sheetPx, width: sheetPx },
           jsPDF: { unit: 'mm', format: 'a4', orientation: landscape ? 'landscape' : 'portrait' },
           pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.stats', '.head'] }
         }).from(holder).save();
       })
       .catch(function (err) { alert(err.message || 'PDF export failed.'); })
-      .then(function () { holder.remove(); busy(btn, false); });
+      .then(function () { wrapper.remove(); busy(btn, false); });
   }
 
   /* ---------- Excel ---------- */
