@@ -13,7 +13,8 @@
 //   - Needs Bootstrap's JS bundle (load it before this file).
 //   - Anti-flicker on full page loads: last-known sidebar is cached in sessionStorage and
 //     painted before any network call; the real checks then run in the background.
-//   - Fires `app:ready` on window when the user is verified:
+//   - Fires `app:ready` on window when the user is verified AND the page has finished parsing,
+//     so every page script has already registered its listener (fixes the first-load race):
 //       window.addEventListener('app:ready', (e) => {
 //         const { user, name, role, isAdmin, perms } = e.detail;
 //       });
@@ -177,6 +178,13 @@
   else if (currentPartial) { renderNav(); applyUser(); }
 
   if (currentPartial) writeCache({ partial: currentPartial, perms, isAdmin, user });
+
+  // Wait until the page has finished parsing, so every page script (home.js, sales.js, ...)
+  // has registered its `app:ready` listener. Without this, a slow first (uncached) load fires
+  // the event before anyone listens and the page never loads its data until refreshed.
+  if (document.readyState === 'loading') {
+    await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
+  }
 
   window.dispatchEvent(new CustomEvent('app:ready', {
     detail: { user: result.user, name: result.name, role: result.role, isAdmin, perms }
