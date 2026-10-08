@@ -77,7 +77,9 @@ body { margin: 0; background-color: var(--app-bg); }
 
 .app-sidebar { --bs-offcanvas-width: 208px; view-transition-name: sidebar; }
 .app-main { min-height: 100vh; }
-.page-topbar { height: var(--header-height); }   /* same as the sidebar brand row */
+/* Sticky header: stays at the top while the page scrolls. Same height as the sidebar brand row.
+   z-index 40 keeps it above the page content and below the fixed sidebar (50) and Bootstrap modals/offcanvas. */
+.page-topbar { height: var(--header-height); position: sticky; top: 0; z-index: 40; }
 
 @media (min-width: 768px) {
   .app-sidebar {
