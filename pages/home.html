@@ -30,16 +30,37 @@
           <div class="d-flex flex-wrap gap-2" id="quickActions"></div>
         </section>
 
-        <!-- 2. Today at a glance (shown only to users who can see sales) -->
+        <!-- 2. Last 30 days at a glance (shown only to users who can see sales) -->
         <div id="todayBlock" class="hidden">
-          <section class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-3" aria-label="Today">
-            <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Today's net revenue</p><p class="stat-value" id="statNet">—</p><p class="stat-sub" id="statNetSub">Pending + Confirmed</p></div></div></div>
-            <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Cash</p><p class="stat-value" id="statCash">—</p><p class="stat-sub">Today</p></div></div></div>
-            <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Bank</p><p class="stat-value" id="statBank">—</p><p class="stat-sub">Today</p></div></div></div>
+          <section class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-3" aria-label="Last 30 days">
+            <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Net revenue (30 days)</p><p class="stat-value" id="statNet">—</p><p class="stat-sub" id="statNetSub">Pending + Confirmed</p></div></div></div>
+            <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Cash</p><p class="stat-value" id="statCash">—</p><p class="stat-sub" id="statCashSub">Last 30 days</p></div></div></div>
+            <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Bank</p><p class="stat-value" id="statBank">—</p><p class="stat-sub" id="statBankSub">Last 30 days</p></div></div></div>
             <div class="col"><div class="card h-100"><div class="card-body py-3"><p class="stat-label">Waiting for confirmation</p><p class="stat-value" id="statPending">—</p><p class="stat-sub" id="statPendingSub"></p></div></div></div>
           </section>
 
-          <!-- 3. Latest sales today -->
+          <!-- 3. Revenue trend (only users who can view reports) -->
+          <section class="card mb-3 hidden" id="trendCard" aria-label="Revenue trend">
+            <div class="card-header panel-head">
+              <div>
+                <h2 class="h6 mb-0">Revenue trend</h2>
+                <span class="small" id="trendSub">Last 30 days</span>
+              </div>
+              <div class="btn-group btn-group-sm" role="group" aria-label="Chart range">
+                <input type="radio" class="btn-check" name="trendMode" id="trendDay" value="day" checked>
+                <label class="btn btn-outline-secondary" for="trendDay">Day</label>
+                <input type="radio" class="btn-check" name="trendMode" id="trendMonth" value="month">
+                <label class="btn btn-outline-secondary" for="trendMonth">Month</label>
+              </div>
+            </div>
+            <div class="card-body">
+              <div style="position:relative;height:280px">
+                <canvas id="trendCanvas" role="img" aria-label="Net revenue line chart"></canvas>
+              </div>
+            </div>
+          </section>
+
+          <!-- 4. Latest sales today -->
           <section class="card">
             <div class="card-header panel-head">
               <h2 class="h6 mb-0">Latest sales today</h2>
@@ -60,6 +81,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="../assets/config.js"></script>
   <script src="../assets/js/supabaseClient.js"></script>
@@ -67,6 +89,6 @@
   <script src="../assets/js/sidebar.js?v=2"></script>
   <script src="../assets/js/ui.js?v=5"></script>
   <script src="../assets/js/sale-form.js?v=2"></script>
-  <script src="../assets/js/home.js?v=3"></script>
+  <script src="../assets/js/home.js?v=6"></script>
 </body>
 </html>
