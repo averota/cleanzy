@@ -343,6 +343,7 @@ declare
   v_msize  smallint;
   v_desc   text;
   v_price  public.prices%rowtype;
+  v_custom numeric := nullif(p_item ->> 'unit_price_khr', '')::numeric;   -- typed price, used only when the catalog price is 0
 begin
   if (v_size is not null or v_model is not null)::int
      + (v_addon is not null)::int + (v_helmet is not null)::int + (v_food is not null)::int <> 1 then
@@ -417,6 +418,14 @@ begin
     unit_khr := public.round_down_khr(v_price.amount * p_usd_to_khr);
   else
     unit_khr := public.round_down_khr(v_price.amount);
+  end if;
+
+  -- Free-price product (catalog price 0): the cashier may type the price. Ignored for any other price.
+  if v_price.amount = 0 and v_custom is not null then
+    if v_custom < 0 or v_custom % 100 <> 0 then
+      raise exception 'Line %: price must be a multiple of 100 riel', p_idx;
+    end if;
+    unit_khr := v_custom::bigint;
   end if;
 
   size_id := v_size;  model_id := v_model;  addon_id := v_addon;
@@ -666,6 +675,15 @@ begin
         raise exception 'Line %: quantity must be at least 1', v_idx;
       end if;
       select unit_price_khr into v_unit from public.sale_items where id = v_item_id;
+      -- Kept line whose catalog price is 0: the typed price may be changed.
+      if nullif(v_item ->> 'unit_price_khr', '') is not null
+         and exists (select 1 from public.sale_items si join public.prices p on p.id = si.price_id
+                      where si.id = v_item_id and p.amount = 0) then
+        if (v_item ->> 'unit_price_khr')::numeric < 0 or (v_item ->> 'unit_price_khr')::numeric % 100 <> 0 then
+          raise exception 'Line %: price must be a multiple of 100 riel', v_idx;
+        end if;
+        v_unit := (v_item ->> 'unit_price_khr')::bigint;
+      end if;
     else
       select * into v_line
       from public.resolve_sale_line(v_item, v_idx, v_hdr.h_at, v_rate.usd_to_khr);
@@ -681,6 +699,7 @@ begin
     if v_item_id is not null then
       update public.sale_items
          set line_no         = v_idx,
+             unit_price_khr  = v_unit,
              quantity        = v_qty,
              discount_type   = v_dtype,
              discount_value  = v_dval,

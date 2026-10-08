@@ -95,6 +95,7 @@
 .chip { --bs-btn-padding-y: .2rem; --bs-btn-padding-x: .55rem; --bs-btn-font-size: .8rem; --bs-btn-border-color: var(--sf-line); --bs-btn-color: #334155; --bs-btn-bg: #fff; font-weight: 600; border-radius: var(--sf-radius-sm); }
 .pl-ctl { display: flex; align-items: center; gap: .35rem; margin-left: auto; }
 .form-control.pl-qty { width: 3.5rem; font-weight: 700; text-align: center; border-color: var(--sf-line); border-radius: var(--sf-radius-sm); }
+.form-control.pl-free { width: 5.5rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; border-color: var(--sf-primary-border); background: var(--sf-primary-subtle); border-radius: var(--sf-radius-sm); }
 .pl-price { min-width: 4.5rem; font-size: .85rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; color: var(--sf-text); }
 .pl-price:empty::before { content: "— ៛"; font-weight: 500; color: var(--sf-subtle); }
 .pl-remove { padding: .12rem .3rem; line-height: 1; color: var(--sf-subtle); background: none; border: 0; border-radius: 4px; }
@@ -144,6 +145,7 @@
 .is-view-mode .tool-btn,
 .is-view-mode .add-line,
 .is-view-mode .pl-remove,
+.is-view-mode .pl-free,
 .is-view-mode .cat-toggles,
 .is-view-mode #optBar,
 .is-view-mode .sale-meta-card .is-empty,

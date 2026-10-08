@@ -224,6 +224,7 @@
       ${picker}
       <div class="pl-ctl">
         <input class="form-control form-control-sm pl-qty" type="number" min="1" step="1" value="1" aria-label="Quantity" title="Quantity">
+        <input class="form-control form-control-sm pl-free hidden" type="number" min="0" step="100" inputmode="numeric" placeholder="0" aria-label="Price in riel" title="Type the price in riel (multiple of 100)">
         <span class="pl-price"></span>
         <button type="button" class="btn btn-sm pl-remove" aria-label="Remove" title="Remove">✕</button>
       </div>
@@ -279,7 +280,11 @@
   // Rows loaded from a saved sale (edit mode) keep their saved price, quantity and line discount
   // until the product on that row is changed; then they count as a new line.
   const lineRef = (row) => (row.dataset.keep && valueOf(row) === row.dataset.orig ? JSON.parse(row.dataset.keep) : null);
-  const unitOf = (row, value) => (lineRef(row) ? Number(row.dataset.unit) : unitByValue[value]);
+  // A product whose catalog price is 0 is "free-price": the cashier types the price on the line (rounded down to 100 riel).
+  const isFree = (value) => !!value && unitByValue[value] === 0;
+  const freeUnit = (row) => Math.max(0, Number(row.querySelector('.pl-free')?.value) || 0);
+  const freeBad = (n) => n % 100 !== 0;   // riel has no coins below 100: the price must be 0 or a multiple of 100
+  const unitOf = (row, value) => (isFree(value) ? freeUnit(row) : lineRef(row) ? Number(row.dataset.unit) : unitByValue[value]);
   const qtyOf = (row) => {
     const q = row.querySelector('.pl-qty');
     return q ? (parseInt(q.value, 10) || 1) : (Number(row.dataset.qty) || 1);
@@ -293,6 +298,8 @@
     row.querySelectorAll('.chip').forEach((c) => { c.setAttribute('aria-pressed', 'false'); c.classList.remove('active'); });
     const q = row.querySelector('.pl-qty');
     if (q) q.value = '1';
+    const f = row.querySelector('.pl-free');
+    if (f) f.value = '';
   }
 
   // Shows / hides an optional block and updates its toggle button (no data is touched).
@@ -487,7 +494,21 @@
 
   function recalc() {
     document.querySelectorAll('#saleProducts .pl-price').forEach((el) => { el.textContent = ''; });
+    document.querySelectorAll('#saleProducts .pline').forEach((row) => {   // price box only for products priced 0
+      const f = row.querySelector('.pl-free');
+      if (!f) return;
+      const free = isFree(valueOf(row));
+      f.classList.toggle('hidden', !free);
+      if (!free) f.value = '';
+    });
     const { lines, itemDisc, bad } = readLines();
+    let badPrice = false;
+    lines.forEach((l) => {
+      const invalid = isFree(l.value) && freeBad(l.unit);
+      l.row.querySelector('.pl-free')?.classList.toggle('is-invalid', invalid);
+      badPrice ||= invalid;
+    });
+    $('saleSaveBtn').disabled = badPrice || !lines.length;   // cannot save with no item, or while a typed price is not a multiple of 100
     let gross = 0;
     lines.forEach((l) => {
       if (l.unit == null) return;
@@ -545,6 +566,7 @@
     }
     const { lines, bad, missing } = readLines();
     if (!lines.length) return toast('Select at least one item.');
+    if (lines.some((l) => isFree(l.value) && freeBad(l.unit))) return toast('Price must be a multiple of 100 riel.');
     if (missing) return toast(`Enter the discount value for ${missing}.`);
     if (bad) return toast('A category discount is not valid.');
     const bikes = lines.filter((l) => l.row.closest('.product').dataset.product === 'size');
@@ -553,6 +575,7 @@
     const items = lines.map((l) => {
       const ref = lineRef(l.row);   // edit mode: an unchanged saved line keeps its id and price
       const item = ref ? { id: ref.id, remark: ref.remark, quantity: l.qty } : itemJson(l.value, l.qty);
+      if (isFree(l.value)) item.unit_price_khr = l.unit;   // typed price for a product priced 0 (the database re-checks it)
       return {
         ...item,
         discount_type: l.split?.type ?? null,
@@ -656,6 +679,8 @@
     row.dataset.unit = String(it.unit_price_khr);
     row.dataset.qty = String(it.quantity);
     row.dataset.keep = JSON.stringify({ id: it.id, remark: it.remark });
+    const f = row.querySelector('.pl-free');
+    if (f && isFree(value)) f.value = it.unit_price_khr || '';
   }
 
   function fillLines(items) {
