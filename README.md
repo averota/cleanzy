@@ -1,6 +1,6 @@
 # Motorbike Wash Revenue
 
-Web app to record and report revenue of a motorbike wash shop (motorbike wash, add-on services, helmet services, food & drinks).
+Web app to record and report revenue of a Cleanzy wash shop (motorbike wash, add-on services, helmet services, food & drinks).
 
 - **Frontend:** static HTML/CSS/JS, hosted on GitHub Pages
 - **Backend:** Supabase (Postgres, Auth, Storage, Realtime, Edge Functions)

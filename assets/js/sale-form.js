@@ -184,7 +184,7 @@
 
     // `optional` products start switched off; their on/off switch adds them to the receipt.
     products = [
-      { key: 'size',   title: 'Motorbike Wash', short: 'Motorbike', icon: 'bicycle', toggleIcon: 'bicycle', placeholder: 'Select size…',
+      { key: 'size',   title: 'Cleanzy Wash', short: 'Motorbike', icon: 'bicycle', toggleIcon: 'bicycle', placeholder: 'Select size…',
         opts: sizes.data.map((s) => opt('size', s.id, s.code)) },
       { key: 'addon',  title: 'Add-on Services', short: 'Add-on', icon: 'wrench-adjustable', toggleIcon: 'stars', placeholder: 'Select service…', optional: true,
         opts: addons.data.map((a) => opt('addon', a.id, a.description)) },
