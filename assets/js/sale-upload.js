@@ -8,6 +8,8 @@
 //   first filled row of the group; later rows may leave them blank (if filled they must match).
 // Writes only through the database function create_sale (same as the New sale form), so prices, rounding and
 // permission rules are applied by the database. Uploaded sales are saved as Pending.
+// Free-price items (catalog price 0): the optional "Price (KHR)" column gives the price (0 or a multiple of 100 riel; blank = 0).
+// It is refused for any item whose catalog price is not 0.
 (() => {
   const { $, esc, toast, todayStr, TZ } = UI;
 
@@ -36,6 +38,7 @@
     { key: 'category',  label: 'Category',               req: 'Required',                      scope: 'line',    hint: 'Motorbike, Add-on, Helmet or Food & Drink', ex: 'Motorbike' },
     { key: 'item',      label: 'Item',                   req: 'Required',                      scope: 'line',    hint: 'Exact name from the "Lists" sheet for that Category (Motorbike = size code).', ex: '' },
     { key: 'qty',       label: 'Quantity',               req: 'Required',                      scope: 'line',    hint: 'Whole number, 1 or more.', ex: '1' },
+    { key: 'price',     label: 'Price (KHR)',            req: 'Optional',                      scope: 'line',    hint: 'Only for items marked "Price 0" on the Lists sheet: the price in riel, 0 or a multiple of 100. Blank = 0. Leave empty for all other items.', ex: '' },
     { key: 'idtype',    label: 'Item Discount Type',     req: 'Optional',                      scope: 'line',    hint: 'Percent or Amount. Needs Item Discount Value.', ex: 'Percent' },
     { key: 'idval',     label: 'Item Discount Value',    req: 'Optional',                      scope: 'line',    hint: 'Percent: 0-100. Amount: riel.', ex: '10' },
     { key: 'idreason',  label: 'Item Discount Reason',   req: 'Optional',                      scope: 'line',    hint: 'Free text.', ex: '' },
@@ -124,13 +127,20 @@
         act(sb.from('addon_services').select('id, description').order('description')),
         act(sb.from('helmet_services').select('id, description').order('description')),
         act(sb.from('food_drink_categories').select('id, kind, name').order('sort_order')),
-        act(sb.from('food_drink_items').select('id, category_id, description').order('description'))
+        act(sb.from('food_drink_items').select('id, category_id, description').order('description')),
+        sb.from('current_prices').select('motorbike_size_id, addon_service_id, helmet_service_id, food_drink_item_id, amount')
       ]);
       const failed = res.find((r) => r.error);
       if (failed) throw new Error(failed.error.message);
-      const [sizes, addons, helmets, cats, foods] = res.map((r) => r.data);
+      const [sizes, addons, helmets, cats, foods, prices] = res.map((r) => r.data);
 
-      const o = (field, id, label, group = '') => ({ field, id, label: String(label), group, k: norm(label) });
+      // Items whose current price is 0: the file may give their price.
+      const freeSet = new Set(prices.filter((p) => Number(p.amount) === 0).map((p) =>
+        (p.motorbike_size_id != null ? `motorbike_size_id:${p.motorbike_size_id}`
+          : p.addon_service_id ? `addon_service_id:${p.addon_service_id}`
+          : p.helmet_service_id ? `helmet_service_id:${p.helmet_service_id}`
+          : `food_drink_item_id:${p.food_drink_item_id}`)));
+      const o = (field, id, label, group = '') => ({ field, id, label: String(label), group, k: norm(label), free: freeSet.has(`${field}:${id}`) });
       const catName = Object.fromEntries(cats.map((c) => [c.id, `${c.kind} – ${c.name}`]));
       return {
         motorbike: sizes.map((s) => o('motorbike_size_id', s.id, s.code)),
@@ -166,7 +176,7 @@
         ['* in a column title = required. All other columns are optional.'],
         ['One row per item line. Rows with the same Group ID are saved as ONE receipt.'],
         ['Receipt fields (marked "Receipt") only need to be filled on the first row of each receipt.'],
-        ['Uploaded sales are saved as Pending. Prices are applied by the system when saved; do not enter prices or receipt numbers.'],
+        ['Uploaded sales are saved as Pending. Prices are applied by the system when saved; do not enter receipt numbers. Only items marked "Price 0" on the Lists sheet take a price in the Price (KHR) column.'],
         ['Keep the column titles in row 1 unchanged. Accepted file types: .xlsx, .csv'],
         [],
         ['Column', 'Required / Optional', 'Applies to', 'Format / allowed values', 'Example'],
@@ -177,10 +187,10 @@
       XLSX.utils.book_append_sheet(wb, wg, 'Instructions');
 
       // Sheet 3: valid Category / Item values
-      const lists = [['Category', 'Item', 'Group']];
-      Object.keys(CATS).forEach((c) => cat[c].forEach((x) => lists.push([CATS[c].title, x.label, x.group])));
+      const lists = [['Category', 'Item', 'Group', 'Price 0']];
+      Object.keys(CATS).forEach((c) => cat[c].forEach((x) => lists.push([CATS[c].title, x.label, x.group, x.free ? 'Price 0 - enter Price (KHR)' : ''])));
       const wl = XLSX.utils.aoa_to_sheet(lists);
-      wl['!cols'] = [{ wch: 16 }, { wch: 44 }, { wch: 30 }];
+      wl['!cols'] = [{ wch: 16 }, { wch: 44 }, { wch: 30 }, { wch: 28 }];
       XLSX.utils.book_append_sheet(wb, wl, 'Lists');
 
       XLSX.writeFile(wb, 'sales_upload_template.xlsx');
@@ -247,14 +257,22 @@
       const q = num(r.v.qty);
       if (!Number.isInteger(q) || q < 1 || q > 32767) errs.push(`${at}Quantity must be a whole number of 1 or more.`);
 
+      const priceRaw = toStr(r.v.price);
+      let price = 0;
+      if (priceRaw !== '') {
+        price = num(r.v.price);
+        if (!Number.isInteger(price) || price < 0 || price % 100 !== 0) { errs.push(`${at}Price must be 0 or a multiple of 100 riel.`); price = 0; }
+      }
+
       const disc = parseDiscount(r.v.idtype, r.v.idval, `${at}Item discount`, errs);
 
       if (c && name !== '') {
         const hits = cat[c].filter((x) => x.k === norm(name));
         if (!hits.length) errs.push(`${at}"${name}" is not an active ${CATS[c].title} item (see the Lists sheet).`);
         else if (hits.length > 1) errs.push(`${at}"${name}" matches more than one ${CATS[c].title} item; rename one of them in the catalog.`);
+        else if (priceRaw !== '' && !hits[0].free) errs.push(`${at}Price can only be entered for items priced 0; "${name}" has a fixed price.`);
         else if (Number.isInteger(q) && q >= 1) {
-          g.items.push({ c, field: hits[0].field, id: hits[0].id, label: hits[0].label, qty: q, disc, reason: toStr(r.v.idreason) || null });
+          g.items.push({ c, field: hits[0].field, id: hits[0].id, label: hits[0].label, free: hits[0].free, price, qty: q, disc, reason: toStr(r.v.idreason) || null });
         }
       }
     });
@@ -270,6 +288,7 @@
         p_items: g.items.map((i) => ({
           [i.field]: i.id,
           quantity: i.qty,
+          ...(i.free ? { unit_price_khr: i.price } : {}),   // typed price for an item priced 0 (the database re-checks it)
           discount_type: i.disc?.type ?? null,
           discount_value: i.disc?.value ?? null,
           discount_reason: i.disc ? i.reason : null
@@ -348,7 +367,7 @@
   // ===================================================================
   // Preview
   // ===================================================================
-  const itemHtml = (i) => `${esc(i.label)} ×${i.qty}${i.disc ? ` <span class="text-body-secondary">(−${i.disc.value.toLocaleString('en-US')}${i.disc.type === 'Percent' ? '%' : ' ៛'})</span>` : ''}`;
+  const itemHtml = (i) => `${esc(i.label)} ×${i.qty}${i.free ? ` <span class="text-body-secondary">@ ${i.price.toLocaleString('en-US')} ៛</span>` : ''}${i.disc ? ` <span class="text-body-secondary">(−${i.disc.value.toLocaleString('en-US')}${i.disc.type === 'Percent' ? '%' : ' ៛'})</span>` : ''}`;
 
   function statusHtml(g) {
     if (g.status === 'ready') return '<span class="badge text-bg-success">Ready</span>';
