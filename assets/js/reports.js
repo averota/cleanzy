@@ -19,6 +19,17 @@
   let cache = {};   // tab -> rows for the current filters
   let gen = 0;      // bumped whenever cached data becomes stale
 
+  // Column filters (multi-select in the table headers).
+  // colSel['<tab>.<field>'] = Set of ticked values; missing / null = no filter (all values).
+  const colSel = {};
+  const FIELD = {
+    category: (r) => r.category ?? '',
+    sub: (r) => r.sub_category ?? '',
+    item: (r) => r.description ?? ''
+  };
+  const catRank = (c) => { const i = CAT_ORDER.indexOf(c); return i < 0 ? 99 : i; };
+  const FILTER_ICON = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8v6l-4 2v-8z"></path></svg>';
+
   // ===================================================================
   // Helpers
   // ===================================================================
@@ -82,17 +93,17 @@
 
     category: {
       note: 'Sales value before receipt adjustments, so totals can differ from Daily net by the adjustment amount.',
+      filters: ['category', 'sub'],
       load: () => fetchAll(() => q('report_by_category', 'sale_date, status, category, sub_category, quantity, gross_khr, discount_khr, net_khr', { payment: false })
         .order('sale_date').order('status').order('category').order('sub_category')),
       view(data) {
-        const order = (c) => { const i = CAT_ORDER.indexOf(c); return i < 0 ? 99 : i; };
         const rows = groupBy(data, (r) => `${r.category}|${r.sub_category ?? ''}`, LINE_F,
           (r) => ({ category: r.category, sub: r.sub_category ?? '' }))
-          .sort((a, b) => order(a.category) - order(b.category) || a.sub.localeCompare(b.sub));
+          .sort((a, b) => catRank(a.category) - catRank(b.category) || a.sub.localeCompare(b.sub));
         return {
           cols: [
-            { h: 'Category', v: (r) => esc(r.label ?? r.category) },
-            { h: 'Sub-category', v: (r) => esc(r.sub ?? '') },
+            { h: 'Category', f: 'category', v: (r) => esc(r.label ?? r.category) },
+            { h: 'Sub-category', f: 'sub', v: (r) => esc(r.sub ?? '') },
             qty, money('Gross', 'gross_khr'), money('Discount', 'discount_khr'), money('Net', 'net_khr')
           ],
           rows,
@@ -103,6 +114,7 @@
 
     items: {
       note: 'Sales value before receipt adjustments. Sorted by net, highest first.',
+      filters: ['item', 'category'],
       load: () => fetchAll(() => q('report_by_item', 'sale_date, status, category, description, quantity, gross_khr, discount_khr, net_khr', { payment: false })
         .order('sale_date').order('status').order('category').order('description')),
       view(data) {
@@ -111,8 +123,8 @@
           .sort((a, b) => b.net_khr - a.net_khr);
         return {
           cols: [
-            { h: 'Item', v: (r) => esc(r.label ?? r.description) },
-            { h: 'Category', v: (r) => esc(r.category ?? '') },
+            { h: 'Item', f: 'item', v: (r) => esc(r.label ?? r.description) },
+            { h: 'Category', f: 'category', v: (r) => esc(r.category ?? '') },
             qty, money('Gross', 'gross_khr'), money('Discount', 'discount_khr'), money('Net', 'net_khr')
           ],
           rows,
@@ -157,26 +169,100 @@
     $('statAdjust').textContent = t.adjustment_khr ? signed(t.adjustment_khr) : fmt(0);
   }
 
-  function renderTab() {
+  // ---- Column filters ----
+  const filterRows = (tab, rows) => {
+    const on = (TABS[tab].filters || []).filter((k) => colSel[`${tab}.${k}`]);
+    return on.length ? rows.filter((r) => on.every((k) => colSel[`${tab}.${k}`].has(FIELD[k](r)))) : rows;
+  };
+
+  function filterOptions(k, raw) {
+    const vals = [...new Set(raw.map(FIELD[k]))];
+    return k === 'category'
+      ? vals.sort((a, b) => catRank(a) - catRank(b) || a.localeCompare(b))
+      : vals.sort((a, b) => a.localeCompare(b));
+  }
+
+  function headCell(c, raw) {
+    if (!c.f) return `<th class="${c.num ? 'num' : ''}">${c.h}</th>`;
+    const key = `${active}.${c.f}`;
+    const sel = colSel[key];
+    const items = filterOptions(c.f, raw).map((v) =>
+      `<label class="col-filter-item"><input class="form-check-input" type="checkbox" data-v="${esc(v)}"${!sel || sel.has(v) ? ' checked' : ''}><span>${v === '' ? '(none)' : esc(v)}</span></label>`).join('');
+    return `<th><span class="col-filter-head">${c.h}<span class="dropdown col-filter" data-key="${key}">`
+      + `<button type="button" class="col-filter-btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Filter ${esc(c.h)}">${FILTER_ICON}</button>`
+      + '<div class="dropdown-menu col-filter-menu">'
+      + `<input type="search" class="form-control form-control-sm col-filter-search" placeholder="Search…" aria-label="Search ${esc(c.h)}">`
+      + '<div class="col-filter-tools"><button type="button" class="btn btn-link btn-sm p-0" data-act="all">Select all</button><button type="button" class="btn btn-link btn-sm p-0" data-act="none">Clear all</button></div>'
+      + `<div class="col-filter-list">${items}</div>`
+      + '</div></span></span></th>';
+  }
+
+  const markFilters = () => document.querySelectorAll('#reportHead .col-filter').forEach((w) =>
+    w.querySelector('.col-filter-btn').classList.toggle('is-filtered', !!colSel[w.dataset.key]));
+
+  function commitFilter(wrap) {
+    const boxes = [...wrap.querySelectorAll('.col-filter-item input')];
+    const picked = boxes.filter((i) => i.checked).map((i) => i.dataset.v);
+    colSel[wrap.dataset.key] = picked.length === boxes.length ? null : new Set(picked);
+    renderTab(true);   // keep the header (and its open menu) in place
+  }
+
+  function onHeadEvent(e) {
+    if (e.type === 'input') {
+      const s = e.target.closest('.col-filter-search');
+      if (!s) return;
+      const term = s.value.trim().toLowerCase();
+      s.closest('.col-filter-menu').querySelectorAll('.col-filter-item').forEach((l) => {
+        l.classList.toggle('hidden', !!term && !l.textContent.toLowerCase().includes(term));
+      });
+    } else if (e.type === 'change') {
+      if (e.target.matches('.col-filter-item input')) commitFilter(e.target.closest('.col-filter'));
+    } else {
+      const a = e.target.closest('[data-act]');
+      if (!a) return;
+      const wrap = a.closest('.col-filter');
+      wrap.querySelectorAll('.col-filter-item:not(.hidden) input').forEach((i) => { i.checked = a.dataset.act === 'all'; });
+      commitFilter(wrap);
+    }
+  }
+
+  function renderTab(keepHead = false) {
     const tab = TABS[active];
     const data = cache[active];
     $('dailyTools').classList.toggle('hidden', active !== 'daily');
 
-    const note = [tab.note, f.payment && active !== 'daily' && active !== 'voided' ? 'The Payment filter does not apply to this view.' : '']
-      .filter(Boolean).join(' ');
-    $('tabNote').textContent = note;
-    $('tabNote').classList.toggle('hidden', !note);
-
     if (!data) {
+      $('tabNote').textContent = tab.note || '';
+      $('tabNote').classList.toggle('hidden', !tab.note);
       $('reportHead').innerHTML = '';
       $('reportFoot').innerHTML = '';
       $('reportBody').innerHTML = '<tr><td class="empty">Loading…</td></tr>';
       return;
     }
 
-    const { cols, rows, totals } = tab.view(data);
+    const { cols, rows, totals } = tab.view(filterRows(active, data));
+    const filtered = (tab.filters || []).some((k) => colSel[`${active}.${k}`]);
+
+    const note = [
+      tab.note,
+      f.payment && active !== 'daily' && active !== 'voided' ? 'The Payment filter does not apply to this view.' : '',
+      filtered ? 'Column filters are applied: totals match the selected rows only (summary cards above are not affected).' : ''
+    ].filter(Boolean).join(' ');
+    $('tabNote').textContent = note;
+    $('tabNote').classList.toggle('hidden', !note);
+
     const cell = (c, r) => `<td class="${c.num ? 'num' : ''}">${c.v(r)}</td>`;
-    $('reportHead').innerHTML = `<tr>${cols.map((c) => `<th class="${c.num ? 'num' : ''}">${c.h}</th>`).join('')}</tr>`;
+    if (!keepHead) {
+      $('reportHead').innerHTML = `<tr>${cols.map((c) => headCell(c, data)).join('')}</tr>`;
+      // "fixed" positioning lets the menu float above the table's scroll area instead of being clipped
+      $('reportHead').querySelectorAll('.col-filter-btn').forEach((b) => bootstrap.Dropdown.getOrCreateInstance(b, {
+        autoClose: 'outside',
+        popperConfig: (d) => ({ ...d, strategy: 'fixed' })
+      }));
+      markFilters();
+    } else {
+      markFilters();
+    }
     $('reportBody').innerHTML = rows.length
       ? rows.map((r) => `<tr>${cols.map((c) => cell(c, r)).join('')}</tr>`).join('')
       : `<tr><td class="empty" colspan="${cols.length}">No data for these filters.</td></tr>`;
@@ -278,7 +364,8 @@
       const b = e.target.closest('.nav-link');
       if (b && b.dataset.tab !== active) setTab(b.dataset.tab);
     });
-    $('groupBy').addEventListener('change', renderTab);
+    $('groupBy').addEventListener('change', () => renderTab());
+    ['input', 'change', 'click'].forEach((t) => $('reportHead').addEventListener(t, onHeadEvent));
 
     refresh();
     // Views cannot be subscribed to, so refetch when the underlying tables change.
