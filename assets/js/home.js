@@ -1,12 +1,14 @@
 // assets/js/home.js
-// Home page: greeting, quick actions, last-30-days totals, revenue trend chart, and today's latest sales.
-// Reads: sales (30-day totals), sales + sale_items (latest today), report_daily / report_monthly (trend chart).
-// Cards + latest sales: users who can enter revenue or view reports. Trend chart: users who can view reports.
+// Home page: greeting, quick actions, last-30-days totals, charts, and today's latest sales.
+// Reads: sales (30-day totals), sales + sale_items (latest today),
+//        report_daily / report_monthly, report_by_category (08_reports.sql).
+// Cards + latest sales: users who can enter revenue or view reports. Charts: users who can view reports.
+// All charts share the Day / Month range of the Revenue trend chart.
 // Clicking a latest-sales row opens the receipt details (read-only) with the shared SaleForm (sale-form.js).
 // Load AFTER sidebar.js (it fires `app:ready`), sale-form.js and Chart.js.
 (() => {
   const { $, esc, toast, badge, fetchAll, TZ, fmt, todayStr } = UI;
-  const RECENT = 8;   // latest sales shown
+  const RECENT = 8;          // latest sales shown
   const TREND_DAYS = 30;     // points in "Day" view
   const TREND_MONTHS = 12;   // points in "Month" view
   const STATS_SELECT = 'status, payment_method, total_khr';
@@ -58,16 +60,18 @@
       : '<tr><td colspan="4" class="empty">No sales yet today.</td></tr>';
   }
 
-  // ---------- Revenue trend chart (report_daily / report_monthly) ----------
+  // ---------- Charts ----------
   const TREND = {
     day:   { view: 'report_daily',   col: 'sale_date', sub: `Last ${TREND_DAYS} days`,     fmtOpt: { day: 'numeric', month: 'short' } },
     month: { view: 'report_monthly', col: 'month',     sub: `Last ${TREND_MONTHS} months`, fmtOpt: { month: 'short', year: '2-digit' } },
   };
   const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
-  let trendChart = null;
+  const PIE_COLORS = ['#0d6efd', '#198754', '#fd7e14', '#6f42c1', '#dc3545', '#20c997', '#6c757d'];
+  const charts = {};
+  let weekdayReceipts = [];   // total receipts per weekday (for the weekday tooltip)
   let trendMode = 'day';
   let trendOn = false;
-  let trendSeq = 0;
+  let chartSeq = 0;
 
   // Ordered x-axis keys (YYYY-MM-DD) ending at the shop's "today"; month keys are first-of-month.
   function trendKeys(mode) {
@@ -80,68 +84,133 @@
     return keys;
   }
 
-  function drawTrend(labels, values) {
-    if (typeof Chart === 'undefined') { toast('Chart library could not be loaded.'); return; }
-    if (trendChart) {
-      trendChart.data.labels = labels;
-      trendChart.data.datasets[0].data = values;
-      trendChart.update();
-      return;
-    }
+  const primaryColor = () => {
     const css = getComputedStyle(document.documentElement).getPropertyValue('--bs-primary').trim();
-    const color = /^#[0-9a-f]{6}$/i.test(css) ? css : '#0d6efd';
-    trendChart = new Chart($('trendCanvas'), {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [{
-          label: 'Net revenue',
-          data: values,
-          borderColor: color,
-          backgroundColor: `${color}22`,
-          fill: true,
-          tension: 0.3,
-          pointRadius: 3,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: (c) => fmt(c.parsed.y) } },
+    return /^#[0-9a-f]{6}$/i.test(css) ? css : '#0d6efd';
+  };
+
+  // --- chart configs (one per chart type) ---
+  const axisY = { beginAtZero: true, ticks: { precision: 0, callback: (v) => compact.format(v) } };
+
+  const lineConfig = (labels, data, { name, color, tip }) => ({
+    type: 'line',
+    data: { labels, datasets: [{ label: name, data, borderColor: color, backgroundColor: `${color}22`, fill: true, tension: 0.3, pointRadius: 3 }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => tip(c.parsed.y) } } },
+      scales: { y: axisY, x: { ticks: { autoSkip: true, maxTicksLimit: 10 } } },
+    },
+  });
+
+  const pieConfig = (labels, data) => ({
+    type: 'pie',
+    data: { labels, datasets: [{ data, backgroundColor: labels.map((_, i) => PIE_COLORS[i % PIE_COLORS.length]) }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            label: (c) => {
+              const total = c.dataset.data.reduce((s, v) => s + v, 0);
+              return `${c.label}: ${fmt(c.parsed)} (${total ? Math.round((c.parsed / total) * 100) : 0}%)`;
+            },
+          },
         },
-        scales: {
-          y: { beginAtZero: true, ticks: { callback: (v) => compact.format(v) } },
-          x: { ticks: { autoSkip: true, maxTicksLimit: 10 } },
+      },
+    },
+  });
+
+  const barConfig = (labels, data, color) => ({
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Avg receipts per day', data, backgroundColor: color, borderRadius: 3 }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (c) => `${c.parsed.y} receipts per day`,
+            afterLabel: (c) => `${weekdayReceipts[c.dataIndex] || 0} receipts in total`,
+          },
         },
       },
-    });
+      scales: { y: { beginAtZero: true } },
+    },
+  });
+
+  // Create the chart on first use, then just swap its data.
+  function draw(key, canvasId, cfg) {
+    if (typeof Chart === 'undefined') { toast('Chart library could not be loaded.'); return; }
+    if (charts[key]) { charts[key].data = cfg.data; charts[key].update(); return; }
+    charts[key] = new Chart($(canvasId), cfg);
   }
 
-  async function loadTrend() {
+  // --- data -> chart ---
+  function drawTrend(rows, keys, cfg) {
+    const totals = Object.fromEntries(keys.map((k) => [k, { net: 0, receipts: 0 }]));
+    rows.forEach((r) => {
+      const t = totals[r[cfg.col]];
+      if (t) { t.net += Number(r.net_khr); t.receipts += Number(r.receipts); }
+    });
+    const labels = keys.map((k) => new Date(`${k}T00:00:00Z`).toLocaleDateString('en-GB', { timeZone: 'UTC', ...cfg.fmtOpt }));
+    draw('revenue', 'trendCanvas', lineConfig(labels, keys.map((k) => totals[k].net), { name: 'Net revenue', color: primaryColor(), tip: fmt }));
+    draw('receipts', 'receiptsCanvas', lineConfig(labels, keys.map((k) => totals[k].receipts), { name: 'Receipts', color: '#198754', tip: (v) => `${v} receipt(s)` }));
+  }
+
+  function drawCategory(rows) {
+    const by = new Map();
+    rows.forEach((r) => { const k = r.category || 'Other'; by.set(k, (by.get(k) || 0) + Number(r.net_khr)); });
+    const items = [...by].filter(([, v]) => v !== 0).sort((a, b) => b[1] - a[1]);
+    draw('category', 'categoryCanvas', pieConfig(items.map(([k]) => k), items.map(([, v]) => v)));
+  }
+
+  // Average receipts per trading day for each weekday, Mon..Sun (rows = report_daily: sale_date, receipts)
+  function drawWeekday(rows) {
+    const perDate = new Map();   // sale_date -> receipts that day (all statuses / payment methods)
+    rows.forEach((r) => perDate.set(r.sale_date, (perDate.get(r.sale_date) || 0) + Number(r.receipts)));
+    const total = Array(7).fill(0);   // receipts per weekday
+    const days = Array(7).fill(0);    // trading days per weekday (days with at least one sale)
+    perDate.forEach((n, date) => {
+      const i = (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;   // Mon = 0 .. Sun = 6
+      total[i] += n;
+      days[i] += 1;
+    });
+    weekdayReceipts = total;
+    const avg = total.map((n, i) => (days[i] ? Math.round((n / days[i]) * 10) / 10 : 0));
+    draw('weekday', 'weekdayCanvas', barConfig(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], avg, primaryColor()));
+  }
+
+  async function loadCharts() {
     if (!trendOn) return;
-    const my = ++trendSeq;
+    const my = ++chartSeq;
     const cfg = TREND[trendMode];
     const keys = trendKeys(trendMode);
-    let rows;
-    try {
-      rows = await fetchAll(() => sb.from(cfg.view).select(`${cfg.col}, net_khr`)
-        .gte(cfg.col, keys[0])
-        .lte(cfg.col, keys[keys.length - 1])
-        .order(cfg.col));
-    } catch (err) {
-      if (my === trendSeq) toast(`Could not load revenue trend: ${err.message}`);
-      return;
-    }
-    if (my !== trendSeq) return;
-
-    const totals = Object.fromEntries(keys.map((k) => [k, 0]));
-    rows.forEach((r) => { if (r[cfg.col] in totals) totals[r[cfg.col]] += Number(r.net_khr); });
-    const labels = keys.map((k) => new Date(`${k}T00:00:00Z`).toLocaleDateString('en-GB', { timeZone: 'UTC', ...cfg.fmtOpt }));
+    const start = keys[0];
+    const end = todayStr();
     $('trendSub').textContent = cfg.sub;
-    drawTrend(labels, keys.map((k) => totals[k]));
+
+    const [trend, cat, week] = await Promise.allSettled([
+      fetchAll(() => sb.from(cfg.view).select(`${cfg.col}, receipts, net_khr`)
+        .gte(cfg.col, start).lte(cfg.col, keys[keys.length - 1]).order(cfg.col)),
+      fetchAll(() => sb.from('report_by_category').select('category, net_khr')
+        .gte('sale_date', start).lte('sale_date', end)
+        .order('sale_date').order('status').order('category').order('sub_category')),
+      fetchAll(() => sb.from('report_daily').select('sale_date, receipts')
+        .gte('sale_date', start).lte('sale_date', end)
+        .order('sale_date').order('status').order('payment_method')),
+    ]);
+    if (my !== chartSeq) return;
+
+    const failed = [trend, cat, week].find((r) => r.status === 'rejected');
+    if (failed) toast(`Could not load charts: ${failed.reason.message}`);
+    if (trend.status === 'fulfilled') drawTrend(trend.value, keys, cfg);
+    if (cat.status === 'fulfilled') drawCategory(cat.value);
+    if (week.status === 'fulfilled') drawWeekday(week.value);
   }
 
   // ---------- Page load ----------
@@ -149,7 +218,7 @@
   async function load() {
     const my = ++loadSeq;
     const { start, end, label } = statsRange();
-    loadTrend();
+    loadCharts();
     let statRows, todayRows;
     try {
       [statRows, todayRows] = await Promise.all([
@@ -189,13 +258,14 @@
     if (!can('enter_revenue') && !can('view_report')) return;   // nothing to show for sales
     $('todayBlock').classList.remove('hidden');
 
-    // Trend chart reads the report views, which return rows only with 'view_report'.
+    // Charts read the report views, which return rows only with 'view_report'.
     if (can('view_report')) {
       trendOn = true;
       $('trendCard').classList.remove('hidden');
+      $('chartRow').classList.remove('hidden');
       document.querySelectorAll('input[name="trendMode"]').forEach((r) => r.addEventListener('change', (e) => {
         trendMode = e.target.value;
-        loadTrend();
+        loadCharts();
       }));
     }
 
