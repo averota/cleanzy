@@ -301,14 +301,19 @@
 
   const rowAttrs = (r) => `tabindex="0" data-id="${r.id}"`;
 
+  // Rows currently shown in the list (search + "Show inactive"); also used by the Excel export.
+  function visibleRows(cols) {
+    const term = $('search').value.trim().toLowerCase();
+    return rows.filter((r) => ($('showInactive').checked || r.is_active)
+      && (!term || cols.map((c) => c.cell(r)).join(' ').replace(/<[^>]*>/g, ' ').toLowerCase().includes(term)));
+  }
+
   function renderItems(E) {
     const cols = itemColumns(E);
     const hasActions = canEdit || (E.price && canPrice);
     $('listHead').innerHTML = `<tr>${cols.map((c) => `<th class="${c.cls || ''}">${esc(c.h)}</th>`).join('')}${hasActions ? '<th class="ctr fit">Action</th>' : ''}</tr>`;
 
-    const term = $('search').value.trim().toLowerCase();
-    const list = rows.filter((r) => ($('showInactive').checked || r.is_active)
-      && (!term || cols.map((c) => c.cell(r)).join(' ').replace(/<[^>]*>/g, ' ').toLowerCase().includes(term)));
+    const list = visibleRows(cols);
 
     $('listBody').innerHTML = list.map((r) => `<tr class="row-click${r.is_active ? '' : ' row-inactive'}" ${rowAttrs(r)}>
         ${cols.map((c) => `<td class="${c.cls || ''}">${c.cell(r)}</td>`).join('')}
@@ -321,6 +326,50 @@
     $('listBody').innerHTML = rateRows.length
       ? rateRows.map((r) => `<tr class="row-click" ${rowAttrs(r)}>${rateCols.map((c) => `<td class="${c.cls || ''}">${c.cell(r)}</td>`).join('')}</tr>`).join('')
       : '<tr><td class="empty" colspan="5">No exchange rate yet. Add one before selling items priced in USD.</td></tr>';
+  }
+
+  // ===================================================================
+  // Excel export (what the list shows right now: current tab, search and "Show inactive" applied)
+  // ===================================================================
+  const plain = (v) => (typeof v === 'string' ? new DOMParser().parseFromString(v.replace(/<br\s*\/?>/gi, ' '), 'text/html').body.textContent.trim() : v ?? '');
+
+  function exportData(E) {
+    if (E.isRate) {
+      return {
+        headers: ['Rate (៛ per 1 USD)', 'Effective from', 'Status', 'Remark', 'Set by'],
+        data: rateRows.map((r) => [Number(r.usd_to_khr), fmtDT(r.effective_from), statusOf(r, rateRows), r.remark ?? '', byName(r)])
+      };
+    }
+    const priced = Boolean(E.price);
+    const list = visibleRows(itemColumns(E));
+    const headers = [...E.columns.map((c) => c.h), ...(priced ? ['Current price', 'Currency', 'Current price (៛)', 'Price since', 'Next price', 'Next currency', 'Next from'] : []), 'Status'];
+    const data = list.map((r) => {
+      const cur = priced ? currentOf(pricesOf(E, r)) : null;
+      const next = priced ? nextOf(pricesOf(E, r)) : null;
+      return [
+        ...E.columns.map((c) => plain(c.cell(r))),
+        ...(priced ? [
+          cur ? Number(cur.amount) : '', cur?.currency ?? '', cur ? (khrOf(Number(cur.amount), cur.currency) ?? '') : '', cur ? fmtDT(cur.effective_from) : '',
+          next ? Number(next.amount) : '', next?.currency ?? '', next ? fmtDT(next.effective_from) : ''
+        ] : []),
+        r.is_active ? 'Active' : 'Inactive'
+      ];
+    });
+    return { headers, data };
+  }
+
+  function exportExcel() {
+    if (typeof XLSX === 'undefined') return toast('Excel library failed to load. Check your connection and reload.', 'error');
+    const E = ENTITIES[current];
+    const { headers, data } = exportData(E);
+    if (!data.length) return toast('Nothing to export.');
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+    ws['!cols'] = headers.map((h, i) => ({ wch: Math.min(50, Math.max(String(h).length, ...data.map((row) => String(row[i]).length)) + 2) }));
+    const wb = XLSX.utils.book_new();
+    const title = E.title || E.label;
+    XLSX.utils.book_append_sheet(wb, ws, title.replace(/[\\/?*[\]:]/g, ' ').slice(0, 31));
+    XLSX.writeFile(wb, `${title.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_')}_${nowLocalInput().slice(0, 10)}.xlsx`);
+    return undefined;
   }
 
   // ===================================================================
@@ -672,6 +721,7 @@
     $('search').addEventListener('input', renderList);
     $('showInactive').addEventListener('change', renderList);
     $('newBtn').addEventListener('click', () => (ENTITIES[current].isRate ? openRateForm() : openItemForm(null)));
+    $('exportBtn').addEventListener('click', exportExcel);
     $('cancelBtn').addEventListener('click', closePanel);
     $('form').addEventListener('submit', onSubmit);
     $('form').addEventListener('input', updatePreview);
