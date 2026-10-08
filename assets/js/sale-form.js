@@ -18,6 +18,7 @@
 // Reads: product tables, current_prices, current_exchange_rate, sales (+ sale_items).
 // Writes only through the database functions create_sale / update_sale / confirm_sale / void_sale / delete_sale.
 // Products and prices are loaded the first time the form is opened.
+// Icons come from Bootstrap Icons (the stylesheet is added automatically by init()).
 (() => {
   const CHIP_MAX = 4;   // a product with this many choices or fewer shows them all as buttons
 
@@ -35,88 +36,97 @@
   const isSuper = () => me?.role === 'Super Admin';
   const modal = () => UI.modal('saleModal');
 
+  const ico = (name, cls = 'me-1') => `<i class="bi bi-${name} ${cls}"></i>`;
   const TEXT = { title: 'New sale', save: 'Save sale', clear: 'Clear', note: 'Total is an estimate; the final amount is calculated when saved.' };
 
   const MARKUP = `
 <div class="modal fade" id="saleModal" tabindex="-1" aria-labelledby="saleTitle" aria-hidden="true" data-bs-backdrop="static">
-    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
-      <div class="modal-content">
-      <div class="modal-header">
-        <h2 class="modal-title h6" id="saleTitle">New sale</h2>
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+    <div class="modal-content sale-modal-card" id="saleModalRoot">
+      <div class="modal-header sale-head">
+        <div class="d-flex align-items-center gap-2">
+          <h2 class="modal-title h6 sale-head-title" id="saleTitle">New sale</h2>
+          <span class="mode-pill mode-pill--editing" id="saleMode"></span>
+        </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <form id="saleForm" class="sale-form" novalidate>
-              <fieldset id="formFields" class="sale-fields" disabled>
-                <div class="modal-body sale-scroll">
-                  <div class="sale-meta">
-                    <div>
-                      <label class="form-label" for="saleDate">Date <span aria-hidden="true">*</span></label>
-                      <input class="form-control form-control-sm" type="date" id="saleDate" required>
-                    </div>
-                    <div>
-                      <label class="form-label" for="saleTime">Time <span aria-hidden="true">*</span></label>
-                      <input class="form-control form-control-sm" type="time" id="saleTime" required>
-                    </div>
-                    <div>
-                      <label class="form-label" for="salePlate">Plate no.</label>
-                      <input class="form-control form-control-sm" id="salePlate" placeholder="Optional" autocomplete="off">
-                    </div>
-                    <div>
-                      <label class="form-label" for="saleCustomer">Customer</label>
-                      <input class="form-control form-control-sm" id="saleCustomer" placeholder="Optional" autocomplete="off">
-                    </div>
-                  </div>
-                  <h3 class="sale-sec-title">Items</h3>
-                  <div id="saleProducts"></div>
-                  <div class="sale-extras" id="optBar" role="group" aria-label="Optional details">
-                    <span class="sale-sec-title">Optional</span>
-                    <button type="button" class="opt-toggle btn btn-sm btn-outline-secondary rounded-pill" data-opt="optDiscount" data-label="Receipt discount" aria-pressed="false">+ Discount</button>
-                    <button type="button" class="opt-toggle btn btn-sm btn-outline-secondary rounded-pill" data-opt="optAdjust" data-label="Adjustment" aria-pressed="false">+ Adjustment</button>
-                    <button type="button" class="opt-toggle btn btn-sm btn-outline-secondary rounded-pill" data-opt="optRemark" data-label="Remark" aria-pressed="false">+ Remark</button>
-                  </div>
-                  <div class="opt-panel hidden" id="optDiscount">
-                    <p class="opt-title">Receipt discount (whole receipt)</p>
-                    <div class="opt-row">
-                      <div class="btn-group btn-group-sm" role="group" aria-label="Discount type"><input type="radio" class="btn-check" name="discType" id="disc0" value="Percent" checked><label class="btn btn-outline-primary" for="disc0">%</label><input type="radio" class="btn-check" name="discType" id="disc1" value="Amount"><label class="btn btn-outline-primary" for="disc1">៛</label></div>
-                      <input class="form-control form-control-sm opt-value" type="number" id="discValue" min="0" step="any" placeholder="Value" aria-label="Discount value">
-                      <input class="form-control form-control-sm opt-text" id="discReason" placeholder="Reason (optional)" aria-label="Discount reason" autocomplete="off">
-                    </div>
-                  </div>
-                  <div class="opt-panel hidden" id="optAdjust">
-                    <p class="opt-title">Adjustment (+ extra / − short)</p>
-                    <div class="opt-row">
-                      <input class="form-control form-control-sm opt-value" type="number" id="adjAmount" step="100" value="0" aria-label="Adjustment in riel">
-                      <input class="form-control form-control-sm opt-text" id="adjReason" placeholder="Reason" aria-label="Adjustment reason" autocomplete="off">
-                    </div>
-                  </div>
-                  <div class="opt-panel hidden" id="optRemark">
-                    <p class="opt-title">Remark</p>
-                    <input class="form-control form-control-sm" id="saleRemark" aria-label="Remark" autocomplete="off">
-                  </div>
+        <fieldset id="formFields" class="sale-fields" disabled>
+          <div class="modal-body sale-scroll">
+            <div class="sale-meta-card">
+              <div class="sale-meta">
+                <div>
+                  <label class="form-label" for="saleDate">${ico('calendar3', '')}Date <span aria-hidden="true">*</span></label>
+                  <input class="form-control form-control-sm" type="date" id="saleDate" required>
                 </div>
-                <div class="sale-foot">
-                  <div class="sale-total" aria-live="polite">
-                    <span class="small" id="totBreak"></span>
-                    <strong id="totTotal">0 ៛</strong>
-                  </div>
-                  <div class="sale-actions">
-                    <div class="btn-group btn-group-sm" role="group" aria-label="Payment"><input type="radio" class="btn-check" name="payment" id="pay0" value="Cash" checked><label class="btn btn-outline-primary" for="pay0">Cash</label><input type="radio" class="btn-check" name="payment" id="pay1" value="Bank"><label class="btn btn-outline-primary" for="pay1">Bank</label></div>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="saleClearBtn">Clear</button>
-                    <button type="submit" class="btn btn-primary btn-sm" id="saleSaveBtn">Save sale</button>
-                  </div>
-                  <p class="sale-note small" id="saleNote">Total is an estimate; the final amount is calculated when saved.</p>
+                <div>
+                  <label class="form-label" for="saleTime">${ico('clock', '')}Time <span aria-hidden="true">*</span></label>
+                  <input class="form-control form-control-sm" type="time" id="saleTime" required>
                 </div>
-              </fieldset>
-              <div class="sale-actions px-3 pb-3 bg-white hidden" id="saleViewActions" style="border-radius:0 0 var(--bs-modal-inner-border-radius) var(--bs-modal-inner-border-radius)">
-                <button type="button" class="btn btn-primary btn-sm hidden" id="saleActConfirm" data-act="confirm">Confirm</button>
-                <button type="button" class="btn btn-outline-danger btn-sm hidden" id="saleActVoid" data-act="void">Void</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm hidden" id="saleActEdit" data-act="edit">Edit</button>
-                <button type="button" class="btn btn-danger btn-sm hidden ms-auto" id="saleActDelete" data-act="delete">Delete</button>
+                <div>
+                  <label class="form-label" for="salePlate">${ico('card-heading', '')}Plate no.</label>
+                  <input class="form-control form-control-sm" id="salePlate" placeholder="Optional" autocomplete="off">
+                </div>
+                <div>
+                  <label class="form-label" for="saleCustomer">${ico('person', '')}Customer</label>
+                  <input class="form-control form-control-sm" id="saleCustomer" placeholder="Optional" autocomplete="off">
+                </div>
               </div>
-            </form>
-      </div>
+            </div>
+            <div class="sale-sec-row">
+              <h3 class="sale-sec-title">${ico('cart-check', 'text-primary')}Items &amp; Services</h3>
+              <span class="sale-sec-aside">Currency: Riel (៛)</span>
+            </div>
+            <div id="saleProducts"></div>
+            <div class="sale-extras" id="optBar" role="group" aria-label="Optional details">
+              <span class="sale-sec-title">Optional</span>
+              <button type="button" class="opt-toggle btn btn-sm btn-outline-secondary rounded-pill" data-opt="optDiscount" data-label="Receipt discount" data-icon="percent" aria-pressed="false">${ico('percent')}+ Receipt discount</button>
+              <button type="button" class="opt-toggle btn btn-sm btn-outline-secondary rounded-pill" data-opt="optAdjust" data-label="Adjustment" data-icon="plus-slash-minus" aria-pressed="false">${ico('plus-slash-minus')}+ Adjustment</button>
+              <button type="button" class="opt-toggle btn btn-sm btn-outline-secondary rounded-pill" data-opt="optRemark" data-label="Remark" data-icon="chat-left-text" aria-pressed="false">${ico('chat-left-text')}+ Remark</button>
+            </div>
+            <div class="opt-panel hidden" id="optDiscount">
+              <p class="opt-title">Receipt discount (whole receipt)</p>
+              <div class="opt-row">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Discount type"><input type="radio" class="btn-check" name="discType" id="disc0" value="Percent" checked><label class="btn btn-outline-primary" for="disc0">%</label><input type="radio" class="btn-check" name="discType" id="disc1" value="Amount"><label class="btn btn-outline-primary" for="disc1">៛</label></div>
+                <input class="form-control form-control-sm opt-value" type="number" id="discValue" min="0" step="any" placeholder="Value" aria-label="Discount value">
+                <input class="form-control form-control-sm opt-text" id="discReason" placeholder="Reason (optional)" aria-label="Discount reason" autocomplete="off">
+              </div>
+            </div>
+            <div class="opt-panel hidden" id="optAdjust">
+              <p class="opt-title">Adjustment (+ extra / − short)</p>
+              <div class="opt-row">
+                <input class="form-control form-control-sm opt-value" type="number" id="adjAmount" step="100" value="0" aria-label="Adjustment in riel">
+                <input class="form-control form-control-sm opt-text" id="adjReason" placeholder="Reason" aria-label="Adjustment reason" autocomplete="off">
+              </div>
+            </div>
+            <div class="opt-panel hidden" id="optRemark">
+              <p class="opt-title">Remark</p>
+              <input class="form-control form-control-sm" id="saleRemark" aria-label="Remark" autocomplete="off" placeholder="Optional remark note">
+            </div>
+          </div>
+          <div class="sale-foot">
+            <div class="sale-total" aria-live="polite">
+              <span class="small" id="totBreak"></span>
+              <strong id="totTotal">0 ៛</strong>
+            </div>
+            <div class="sale-actions">
+              <div class="btn-group btn-group-sm" role="group" aria-label="Payment"><input type="radio" class="btn-check" name="payment" id="pay0" value="Cash" checked><label class="btn btn-outline-primary" for="pay0">${ico('cash')}Cash</label><input type="radio" class="btn-check" name="payment" id="pay1" value="Bank"><label class="btn btn-outline-primary" for="pay1">${ico('qr-code')}Bank</label></div>
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="saleClearBtn">Clear</button>
+              <button type="submit" class="btn btn-primary btn-sm" id="saleSaveBtn">${ico('check2')}Save sale</button>
+            </div>
+            <p class="sale-note small" id="saleNote">Total is an estimate; the final amount is calculated when saved.</p>
+          </div>
+        </fieldset>
+        <div class="sale-actions hidden" id="saleViewActions">
+          <button type="button" class="btn btn-primary btn-sm hidden" id="saleActConfirm" data-act="confirm">${ico('check-lg')}Confirm</button>
+          <button type="button" class="btn btn-outline-danger btn-sm hidden" id="saleActVoid" data-act="void">${ico('slash-circle')}Void</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm hidden" id="saleActEdit" data-act="edit">${ico('pencil')}Edit</button>
+          <button type="button" class="btn btn-danger btn-sm hidden ms-auto" id="saleActDelete" data-act="delete">${ico('trash3')}Delete</button>
+        </div>
+      </form>
     </div>
   </div>
+</div>
 `;
 
   // ===================================================================
@@ -174,13 +184,13 @@
 
     // `optional` products start switched off; their on/off switch adds them to the receipt.
     products = [
-      { key: 'size',   title: 'Motorbike',      placeholder: 'Select size…',
+      { key: 'size',   title: 'Motorbike Wash', short: 'Motorbike', icon: 'bicycle', toggleIcon: 'bicycle', placeholder: 'Select size…',
         opts: sizes.data.map((s) => opt('size', s.id, s.code)) },
-      { key: 'addon',  title: 'Add-on',         placeholder: 'Select service…', optional: true,
+      { key: 'addon',  title: 'Add-on Services', short: 'Add-on', icon: 'wrench-adjustable', toggleIcon: 'stars', placeholder: 'Select service…', optional: true,
         opts: addons.data.map((a) => opt('addon', a.id, a.description)) },
-      { key: 'helmet', title: 'Helmet',         placeholder: 'Select service…', optional: true,
+      { key: 'helmet', title: 'Helmet Care',    short: 'Helmet', icon: 'shield-check', toggleIcon: 'shield', placeholder: 'Select service…', optional: true,
         opts: helmets.data.map((h) => opt('helmet', h.id, h.description)) },
-      { key: 'food',   title: 'Food & Drink',   placeholder: 'Select item…',    optional: true,
+      { key: 'food',   title: 'Food & Drink',   short: 'Food & Drink', icon: 'cup-hot', toggleIcon: 'cup-hot', placeholder: 'Select item…',    optional: true,
         opts: foodOrder.map((f) => opt('food', f.id, f.description, catName[f.category_id])) }
     ];
     unitByValue = {};
@@ -208,7 +218,7 @@
     const picker = usesChips(p)
       ? `<div class="chips" role="group" aria-label="${esc(p.title)}">${p.opts.map((o) =>
           `<button type="button" class="chip btn btn-sm btn-outline-primary" data-value="${o.value}" aria-pressed="false"${o.unit == null ? ' disabled' : ''}`
-          + ` title="${o.unit == null ? 'No price set' : fmt(o.unit)}">${esc(o.label)}</button>`).join('')}</div>`
+          + ` title="${o.unit == null ? 'No price set' : fmt(o.unit)}">${esc(o.label)}${o.unit == null ? '' : ` (${fmt(o.unit)})`}</button>`).join('')}</div>`
       : `<select class="form-select form-select-sm pl-select" aria-label="${esc(p.title)}">${selectHtml(p)}</select>`;
     return `<div class="pline" data-product="${p.key}" data-value="">
       ${picker}
@@ -224,12 +234,12 @@
   // until their toggle button is switched on.
   function blockHtml(p) {
     const disc = p.opts.length
-      ? `<button type="button" class="tool-btn" data-disc="${p.key}" aria-pressed="false">+ Discount</button>`
+      ? `<button type="button" class="tool-btn" data-disc="${p.key}" aria-pressed="false">${ico('tag-fill')}+ Discount</button>`
       : '';
     const add = p.opts.length
-      ? `<button type="button" class="add-line" data-add="${p.key}">+ Add another</button>`
+      ? `<button type="button" class="add-line" data-add="${p.key}">${ico('plus-lg', 'me-0')}Add another</button>`
       : '';
-    const hint = p.key === 'size' ? '<p class="product-hint small hidden">Plate number entered: one motorbike only.</p>' : '';
+    const hint = p.key === 'size' ? `<p class="product-hint hidden">${ico('info-circle')}Plate number entered: one motorbike only.</p>` : '';
     const discPanel = p.opts.length
       ? `<div class="cat-disc hidden">
            <div class="btn-group btn-group-sm" role="group" aria-label="Discount type">
@@ -242,7 +252,7 @@
       : '';
     return `<section class="product${p.optional ? ' is-optional hidden' : ''}" data-product="${p.key}">
       <div class="product-head">
-        <h3 class="product-title">${esc(p.title)}</h3>
+        <h3 class="product-title">${ico(p.icon, '')}${esc(p.title)}</h3>
         <div class="product-tools">${disc}</div>
       </div>
       ${hint}
@@ -257,7 +267,7 @@
     const bar = optional.length
       ? `<div class="cat-toggles" role="group" aria-label="Add more items">${optional.map((p) =>
           `<button type="button" class="cat-toggle btn btn-sm btn-outline-primary" data-toggle="${p.key}" aria-pressed="false"`
-          + `${p.opts.length ? '' : ' disabled title="Nothing set up yet"'}>${esc(p.title)}</button>`).join('')}</div>`
+          + `${p.opts.length ? '' : ' disabled title="Nothing set up yet"'}>${ico(p.toggleIcon, '')}${esc(p.short)}</button>`).join('')}</div>`
       : '';
     $('saleProducts').innerHTML = products.filter((p) => !p.optional).map(blockHtml).join('')
       + bar
@@ -326,7 +336,7 @@
     if (!panel || !btn) return;
     panel.classList.toggle('hidden', !show);
     btn.setAttribute('aria-pressed', String(show));
-    btn.textContent = `${show ? '−' : '+'} Discount`;
+    btn.innerHTML = `${ico('tag-fill')}${show ? '−' : '+'} Discount`;
     panel.querySelector(`input[type="radio"][value="${show ? type : 'Percent'}"]`).checked = true;
     panel.querySelector('.cd-value').value = show ? value : '';
     panel.querySelector('.cd-reason').value = show ? reason : '';
@@ -461,7 +471,7 @@
     section.classList.toggle('hidden', !show);
     btn.setAttribute('aria-pressed', String(show));
     btn.classList.toggle('active', show);
-    btn.textContent = `${show ? '−' : '+'} ${btn.dataset.label}`;
+    btn.innerHTML = `${ico(btn.dataset.icon)}${show ? '−' : '+'} ${btn.dataset.label}`;
     if (show) {
       section.querySelector('input:not([type="radio"])')?.focus();
     } else {
@@ -720,9 +730,9 @@
   }
 
   // Read-only view shows only what was recorded: empty details, empty product rows and unused blocks are hidden
-  // (the CSS class .is-view hides the editing controls: toggles, + Discount, + Add another, remove, unselected chips).
+  // (the CSS class .is-view-mode on the modal hides the editing controls: toggles, + Discount, + Add another, remove, unselected chips).
   function markView(view) {
-    $('saleForm').classList.toggle('is-view', view);
+    $('saleModalRoot').classList.toggle('is-view-mode', view);
     ['salePlate', 'saleCustomer'].forEach((id) => $(id).parentElement.classList.toggle('meta-empty', view && !$(id).value.trim()));
     document.querySelectorAll('#saleProducts .pline').forEach((r) => r.classList.toggle('is-empty', view && !valueOf(r)));
     document.querySelectorAll('#saleProducts section.product').forEach((sec) =>
@@ -743,8 +753,13 @@
     $('formFields').disabled = view;
     $('saleSaveBtn').classList.toggle('hidden', view);
     $('saleClearBtn').classList.toggle('hidden', view);
-    $('saleTitle').textContent = mode === 'new' ? TEXT.title : `${mode === 'edit' ? 'Edit receipt' : 'Receipt'} #${s.receipt_no}`;
-    $('saleSaveBtn').textContent = mode === 'edit' ? 'Save changes' : TEXT.save;
+    const head = { new:  ['plus-circle', TEXT.title, 'editing', 'pencil-fill', 'New entry'],
+                   edit: ['pencil-square', `Edit sale #${s?.receipt_no}`, 'editing', 'pencil-fill', 'Editing'],
+                   view: ['receipt-cutoff', `Sale #${s?.receipt_no}`, 'receipt', 'eye-fill', 'View'] }[mode];
+    $('saleTitle').innerHTML = `${ico(head[0], 'text-primary')}${esc(head[1])}`;
+    $('saleMode').className = `mode-pill mode-pill--${head[2]}`;
+    $('saleMode').innerHTML = `${ico(head[3], 'me-0')}${head[4]}`;
+    $('saleSaveBtn').innerHTML = `${ico('check2')}${mode === 'edit' ? 'Save changes' : TEXT.save}`;
     $('saleClearBtn').textContent = mode === 'edit' ? 'Cancel edit' : TEXT.clear;
     $('saleNote').textContent = view
       ? `${s.status}${s.void_reason ? `: ${s.void_reason}` : ''}. Saved total ${fmt(s.total_khr)}.`
@@ -828,6 +843,9 @@
     if (started) return;
     started = true;
 
+    if (!document.querySelector('link[href*="bootstrap-icons"]')) {
+      document.head.insertAdjacentHTML('beforeend', '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">');
+    }
     document.body.insertAdjacentHTML('beforeend', MARKUP);
 
     $('saleDate').max = todayStr();
